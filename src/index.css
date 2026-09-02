@@ -1,7 +1,21 @@
+html {
+  /*
+   * Follows the device until MUI's `CssBaseline` sets the chosen scheme, so the
+   * word-file spinner is never a white flash on a dark phone.
+   */
+  color-scheme: light dark;
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+body {
+  /* `CssBaseline` only mounts once the store is loaded; until then the page
+   * would otherwise sit inside the user agent's default 8px margin. */
+  margin: 0;
 }
 
 #root {

@@ -4,10 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import type { HardWord } from '../../lib/stats'
 import type { WordRow } from '../../lib/types'
+import { CORRECT_COLOR } from '../../theme'
 import AccuracyByPresentationChart from './AccuracyByPresentationChart'
 import AttemptsPerDayChart from './AttemptsPerDayChart'
 import HardestWordsTable from './HardestWordsTable'
 import StatTiles from './StatTiles'
+import WordsPerPresentationChart from './WordsPerPresentationChart'
 import { dayToLocalMs, ordinal } from '../chartOptions'
 
 const LANGUAGES = ['English', 'French', 'Gujarati']
@@ -126,35 +128,63 @@ function lastChart(): Highcharts.Chart {
   return chart
 }
 
-describe('AccuracyByPresentationChart', () => {
-  const data = [
-    { n: 1, pct: 50.4, count: 10 },
-    { n: 2, pct: 70, count: 6 },
-  ]
+const byPresentation = [
+  { n: 1, pct: 50.4, count: 120 },
+  { n: 2, pct: 61, count: 78 },
+  { n: 3, pct: 72, count: 41 },
+]
 
-  it('draws one column per presentation number, labelled with ordinals', () => {
-    const { container } = render(<AccuracyByPresentationChart data={data} />)
+describe('AccuracyByPresentationChart', () => {
+  it('draws one accuracy column per presentation number, labelled with ordinals', () => {
+    const { container } = render(<AccuracyByPresentationChart data={byPresentation} />)
     expect(container.querySelector('svg.highcharts-root')).toBeInTheDocument()
 
     const chart = lastChart()
+    // A single series: the word counts live in their own chart now.
+    expect(chart.series).toHaveLength(1)
     expect(chart.series[0].type).toBe('column')
-    expect(chart.series[0].points.map((point) => point.y)).toEqual([50.4, 70])
-    expect(chart.xAxis[0].categories).toEqual(['1st', '2nd'])
-    // The percentage axis must really stop at 100: a second y axis makes
-    // Highcharts align tick counts and overshoot unless that is turned off.
+    expect(chart.series[0].points.map((point) => point.y)).toEqual([50.4, 61, 72])
+    expect(chart.xAxis[0].categories).toEqual(['1st', '2nd', '3rd'])
+    expect(chart.yAxis).toHaveLength(1)
     expect(chart.yAxis[0].max).toBe(100)
     // (jsdom gives the chart no height, so the tick count itself is not fixed.)
     expect(chart.yAxis[0].tickPositions?.at(-1)).toBe(100)
     expect(chart.options.credits?.enabled).toBe(false)
   })
 
-  it('puts the sample size in the tooltip', () => {
-    render(<AccuracyByPresentationChart data={data} />)
-    const point = lastChart().series[0].points[0]
+  it('spells out the presentation and the sample size in the tooltip', () => {
+    render(<AccuracyByPresentationChart data={byPresentation} />)
+    const point = lastChart().series[0].points[2]
     const options = point.series.options as Highcharts.SeriesColumnOptions
     expect(Highcharts.format(options.tooltip?.pointFormat ?? '', { point })).toBe(
-      '<b>50%</b> correct · n = 10',
+      '<b>72%</b> correct on the 3rd presentation (n = 41)',
     )
+  })
+})
+
+describe('WordsPerPresentationChart', () => {
+  it('draws one neutral column of word counts on the same categories', () => {
+    render(<WordsPerPresentationChart data={byPresentation} />)
+
+    const chart = lastChart()
+    expect(chart.series).toHaveLength(1)
+    expect(chart.series[0].type).toBe('column')
+    expect(chart.series[0].points.map((point) => point.y)).toEqual([120, 78, 41])
+    expect(chart.xAxis[0].categories).toEqual(['1st', '2nd', '3rd'])
+    expect(chart.yAxis[0].options.allowDecimals).toBe(false)
+    expect(chart.series[0].color).not.toBe(CORRECT_COLOR)
+  })
+
+  it('reads as a sentence in the tooltip', () => {
+    render(<WordsPerPresentationChart data={byPresentation} />)
+    const points = lastChart().series[0].points
+    const format = (point: Highcharts.Point) =>
+      Highcharts.format(
+        (point.series.options as Highcharts.SeriesColumnOptions).tooltip?.pointFormat ?? '',
+        { point },
+      )
+    expect(format(points[2])).toBe('41 words have been shown 3 times')
+    expect(format(points[0])).toBe('120 words have been shown once')
   })
 })
 
@@ -181,14 +211,16 @@ describe('AttemptsPerDayChart', () => {
 })
 
 describe('chart empty states', () => {
-  it('replaces both charts with a message when there is no data', () => {
+  it('replaces every chart with a message when there is no data', () => {
     render(
       <>
         <AccuracyByPresentationChart data={[]} />
+        <WordsPerPresentationChart data={[]} />
         <AttemptsPerDayChart data={[]} />
       </>,
     )
-    expect(screen.getByText(/practise a few words/i)).toBeInTheDocument()
+    expect(screen.getByText(/practise a few words to see this chart/i)).toBeInTheDocument()
+    expect(screen.getByText(/how far they get/i)).toBeInTheDocument()
     expect(screen.getByText(/daily practice/i)).toBeInTheDocument()
   })
 })

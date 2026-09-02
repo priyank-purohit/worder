@@ -23,6 +23,12 @@ missing. Row order matters: **the first `topN` rows (default 500) are treated as
 most common words** and are drawn more often. Cells may contain commas inside quotes
 (use papaparse). Skip rows that have fewer than 2 non-empty cells. Trim cells.
 
+The shipped file holds **968 rows**, ordered by English word frequency
+(`google-10000-english`), most common first — so the row order is what makes
+`topN` meaningful. Rows that shared an English word were **merged into one row**
+with their alternatives joined by `" / "` (e.g. `to / at`, `a / an / one`), so no
+English word appears twice.
+
 Swapping to another language = replacing this file. Nothing else changes.
 
 ## Core types (`src/lib/types.ts`)
@@ -34,10 +40,12 @@ export interface WordRow {
 }
 export interface WordList { languages: string[]; rows: WordRow[]; }
 export interface Attempt { t: number; correct: boolean; }   // t = epoch ms
+export type ThemeMode = 'system' | 'light' | 'dark';
 export interface Settings {
   presentationLanguage: string;     // default: "French" if present, else languages[1] ?? languages[0]
   topN: number;                     // default 500
   topShare: number;                 // default 0.7  (probability a draw comes from the top-N pool)
+  themeMode: ThemeMode;             // default 'system'; added after v1, missing/unknown reads as 'system'
 }
 export interface Store {
   version: 1;
@@ -68,7 +76,10 @@ duplicates (e.g. French "à" appears for both "to" and "at"). Rows lacking a val
 
 ## Scheduler (`src/lib/scheduler.ts`)
 
-`pickNext(rows: WordRow[], settings, recentKeys: string[], rng = Math.random): WordRow`
+`pickNext(rows: WordRow[], settings: DrawSettings, recentKeys: string[], rng = Math.random): WordRow`
+
+`DrawSettings = Pick<Settings, 'presentationLanguage' | 'topN' | 'topShare'>` — only the
+settings a draw depends on, so a caller does not have to hold a whole `Settings`.
 
 - Eligible rows = rows with a value in `presentationLanguage`.
 - Top pool = eligible rows with `index < topN`; rest pool = the others.
@@ -80,7 +91,10 @@ duplicates (e.g. French "à" appears for both "to" and "at"). Rows lacking a val
 ## Stats helpers (`src/lib/stats.ts`) — pure, unit-tested
 
 - `summarize(attempts)` → `{ seen, correct, incorrect, pctCorrect | null }`
-- `runningAccuracy(attempts)` → `[{ t, correct, pct }]` cumulative % after each attempt
+- `halfDayPeriods(attempts)` → one entry per **local half-day that has attempts**, oldest
+  first: `{ start, label: 'MMM D YYYY AM|PM', correct, incorrect, pct, cumulativePct }`.
+  A local calendar day is split at noon; `pct` is accuracy inside the period and
+  `cumulativePct` is accuracy over every attempt up to the end of it.
 - `accuracyByPresentation(allStats)` → for n = 1..max, `% correct on a word's n-th
   presentation` across all words, plus the sample count for each n
 - `attemptsPerDay(allStats)` → `[{ day: 'YYYY-MM-DD', correct, incorrect }]`
@@ -89,28 +103,49 @@ duplicates (e.g. French "à" appears for both "to" and "at"). Rows lacking a val
 ## Pages (HashRouter)
 
 Navigation: MUI `BottomNavigation` on small screens (`sm` down), `AppBar` with tabs
-on larger. Theme follows system light/dark via `useMediaQuery('(prefers-color-scheme: dark)')`.
+on larger. The palette comes from `settings.themeMode`: `light` and `dark` are
+explicit, `system` follows `useMediaQuery('(prefers-color-scheme: dark)')`. `App`
+reads the mode inside the store provider (`ThemedApp`) and keeps the
+`<meta name="theme-color">` in step with `palette.background.default`.
 Everything must be usable on phone, tablet and desktop.
 
 ### `/` Practice (`src/pages/PracticePage.tsx`)
 
-- One card centered, large presentation word. Small caption: `#<index+1>` and, if
-  seen before, `seen N× · P% correct`.
+- One card centered, large presentation word. The header is a single line that never
+  wraps: `#<index+1>`, then — for a word that has been seen — one small dot per
+  result for the **last 10 attempts**, oldest on the left, green for correct and red
+  for incorrect (`HistoryDots`, `role="img"` with an `aria-label` of
+  `Last N results: correct, incorrect, …`). No percentage and no `seen N×` anywhere
+  on the card.
+- **Font fitting** (`useFitText`): the word is sized so its longest
+  whitespace-separated token fits the card's width — measured with an offscreen
+  canvas in the element's own computed font, so no layout pass and no resize loop.
+  Range 20 px to 56 px on a phone (`sm` down) / 64 px above, filling 92% of the
+  available width, re-measured through a `ResizeObserver`. A single-token entry gets
+  `white-space: nowrap` and is therefore always on **one line**; a multi-word entry
+  may wrap, but only ever at a space (`overflow-wrap: normal`, `word-break: keep-all`,
+  no hyphens) — never inside a word.
 - **Reveal**: double-tap / double-click on the card, or `Space` key. Shows the texts of
   every *other* language in small text at the bottom of the card, each labelled with
   its language name. No flip animation. Word stays visible.
+- **Grading is locked until the card is revealed.** Before the reveal the ✗ / ✓ buttons
+  are `disabled`, `ArrowLeft` / `ArrowRight` do nothing, and a drag resists (a fifth of
+  the distance, capped at 12 px, no colour tint) and springs back. A refused gesture
+  shows `Reveal the translation first` for 1.2 s in the same fixed-height slot the
+  reveal panel uses, so nothing on the card moves. Double-tap always works — it is how
+  the card is unlocked. Every new card starts unrevealed, and so locked again.
 - **Swipe right = correct, swipe left = incorrect.** Pointer-event drag with the card
   following the finger, slight rotation, green/red tint that grows with distance.
   Commit when released past ~35% of card width or with enough velocity; otherwise
   spring back. Animate off-screen then load the next card. Also `ArrowRight` /
   `ArrowLeft` keys, and two large ✗ / ✓ `IconButton`s under the card for accessibility.
-- Swiping without revealing still records the attempt.
 - Each attempt records `{ t: Date.now(), correct }` under the current presentation
   language and word key.
 - **Undo** button (`UndoIcon`): removes the last recorded attempt and brings that card
   back (unrevealed). Disabled when nothing to undo. One level is enough.
-- Double-tap must not zoom the page on iOS: `touch-action: manipulation` on the card
-  and `user-select: none`.
+- Double-tap must not zoom the page on iOS: `touch-action: pan-y` on the card (not
+  `manipulation`, which lets the browser steal the horizontal drag and cancel the
+  swipe mid-gesture) and `user-select: none`.
 
 ### `/words` and `/words/:key` Word stats (`src/pages/WordsPage.tsx`)
 
@@ -120,23 +155,31 @@ Everything must be usable on phone, tablet and desktop.
 - Selecting navigates to `/words/<encodeURIComponent(key)>`.
 - Detail: all texts by language, rank `#index+1`, seen / correct / incorrect /
   % correct chips. Empty state if never seen.
-- Highcharts chart: x = datetime, a **scatter** series of one dot per attempt at
-  y = running accuracy % after that attempt, colour green (`#2e7d32`) for correct, red
-  (`#c62828`) for incorrect, plus a thin **line** series of the same running accuracy.
-  Y axis 0–100. Tooltip shows date/time and result.
+- Highcharts chart, "Accuracy over time": x = **category axis of half-day periods**
+  from `halfDayPeriods`, labelled `MMM D YYYY AM|PM` (e.g. `Sep 2 2026 PM`), tilted 45°
+  past 6 categories. Two series on the **one** 0–100 % y axis: a green
+  (`#2e7d32`) **column** of the accuracy inside each period, data-labelled with its
+  score as `k/n`, and a dashed grey **line** of the cumulative accuracy up to the end
+  of each period. Shared tooltip: period, `k of n correct`, cumulative %.
 - Below: compact table/list of attempts (date, result), newest first.
 
 ### `/dashboard` (`src/pages/DashboardPage.tsx`)
 
 - Stat tiles: words seen / total eligible, total attempts, overall % correct, current
   presentation language.
-- Chart A: **accuracy vs presentation number** — column or line of
-  `accuracyByPresentation`; tooltip shows sample count `n`.
-- Chart B: attempts per day, stacked columns green/red.
+- Chart A, "Accuracy by presentation number": green columns of `accuracyByPresentation`
+  on a single 0–100 % y axis; tooltip spells out the ordinal and the sample count `n`.
+- Chart B, "Words reaching each presentation number": the sample size behind chart A as
+  neutral-grey columns on its own count axis, sharing chart A's ordinal categories.
+  Two separate charts, each with **one** y axis — the counts used to be a second series
+  on a second axis of chart A, which made neither readable.
+- Chart C: attempts per day, stacked columns green/red.
 - Table: hardest words (`hardestWords`), each row links to `/words/:key`.
 
 ### `/settings` (`src/pages/SettingsPage.tsx`)
 
+- Appearance: a `ToggleButtonGroup` of **System / Light / Dark** writing
+  `settings.themeMode`, with the helper text "System follows your device setting."
 - Presentation language `Select` (from header languages).
 - `topN` number field, `topShare` slider (0–1, step 0.05, shown as %).
 - Word file info: detected languages, row count.

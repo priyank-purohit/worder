@@ -1,5 +1,5 @@
 import type { Theme } from '@mui/material/styles'
-import type { Options } from 'highcharts'
+import type { Options, XAxisOptions } from 'highcharts'
 
 /** Chart height in px — small enough to fit a phone screen, tall enough to read. */
 export const CHART_HEIGHT = 280
@@ -58,6 +58,19 @@ export function ordinal(n: number): string {
       return `${n}rd`
     default:
       return `${n}th`
+  }
+}
+
+/**
+ * The `1st` / `2nd` / `3rd` category axis shared by the two presentation-number
+ * charts on the dashboard, so stacking them lines the columns up.
+ */
+export function presentationAxis(theme: Theme, presentations: number[]): XAxisOptions {
+  const axis = axisTheme(theme)
+  return {
+    ...axis,
+    categories: presentations.map(ordinal),
+    title: { ...axis.title, text: 'Presentation' },
   }
 }
 

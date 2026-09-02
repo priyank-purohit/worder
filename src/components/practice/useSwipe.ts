@@ -13,6 +13,10 @@ export const DOUBLE_TAP_MS = 300
 export const EXIT_MS = 250
 /** How long the card takes to spring back to centre. */
 export const RETURN_MS = 200
+/** How far a locked card gives before it refuses to move any further, in px. */
+const LOCKED_MAX_DX = 12
+/** Share of a locked drag that reaches the card, before {@link LOCKED_MAX_DX}. */
+const LOCKED_RESISTANCE = 0.2
 
 /** Only pointer samples this recent are used for the release velocity. */
 const VELOCITY_WINDOW_MS = 120
@@ -40,6 +44,13 @@ export interface UseSwipeOptions {
   onCommit: (correct: boolean) => void
   /** Called on a double tap / double click on the card. */
   onDoubleTap: () => void
+  /**
+   * While true the card cannot be graded: a drag resists and springs back, and
+   * `fling` does nothing. Double taps still work — that is how it is unlocked.
+   */
+  locked?: boolean
+  /** Called when a locked gesture or fling was refused, so the UI can explain. */
+  onBlocked?: () => void
 }
 
 export interface UseSwipeResult {
@@ -74,6 +85,11 @@ function clamp(value: number, limit = 1): number {
   return Math.max(-limit, Math.min(limit, value))
 }
 
+/** A locked drag barely moves: a fifth of the distance, capped, so it feels stuck. */
+function resist(dx: number): number {
+  return Math.sign(dx) * Math.min(LOCKED_MAX_DX, Math.abs(dx) * LOCKED_RESISTANCE)
+}
+
 /** px/ms over the most recent samples; 0 when the finger had already stopped. */
 function releaseVelocity(samples: Sample[], releaseT: number): number {
   const last = samples[samples.length - 1]
@@ -92,8 +108,16 @@ function releaseVelocity(samples: Sample[], releaseT: number): number {
  * reported as a tap; anything further is a drag that commits past
  * {@link COMMIT_RATIO} of the card width or above {@link COMMIT_VELOCITY}, and
  * springs back otherwise.
+ *
+ * While `locked` the card may not be graded at all: drags resist and never
+ * commit, `fling` is refused, and both report through `onBlocked`.
  */
-export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeResult {
+export function useSwipe({
+  onCommit,
+  onDoubleTap,
+  locked = false,
+  onBlocked,
+}: UseSwipeOptions): UseSwipeResult {
   const cardRef = useRef<HTMLDivElement>(null)
   const [dx, setDx] = useState(0)
   const [progress, setProgress] = useState(0)
@@ -109,6 +133,12 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
   const lastTapRef = useRef(0)
   const timerRef = useRef<number | null>(null)
 
+  // Read inside the pointer callbacks, which must not change identity mid-drag.
+  const lockedRef = useRef(locked)
+  useEffect(() => {
+    lockedRef.current = locked
+  }, [locked])
+
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current)
@@ -118,12 +148,12 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
 
   useEffect(() => clearTimer, [clearTimer])
 
-  const goto = useCallback((next: SwipePhase, nextDx: number) => {
+  const goto = useCallback((next: SwipePhase, nextDx: number, nextProgress?: number) => {
     phaseRef.current = next
     dxRef.current = nextDx
     setPhase(next)
     setDx(nextDx)
-    setProgress(clamp(nextDx / thresholdRef.current))
+    setProgress(nextProgress ?? clamp(nextDx / thresholdRef.current))
   }, [])
 
   const cardWidth = useCallback(() => {
@@ -138,6 +168,10 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
   const fling = useCallback(
     (correct: boolean) => {
       if (phaseRef.current === 'exit') return
+      if (lockedRef.current) {
+        onBlocked?.()
+        return
+      }
       pointerIdRef.current = null
       movedRef.current = 0
       lastTapRef.current = 0
@@ -153,7 +187,7 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
         onCommit(correct)
       }, EXIT_MS)
     },
-    [cardWidth, clearTimer, goto, measure, onCommit],
+    [cardWidth, clearTimer, goto, measure, onBlocked, onCommit],
   )
 
   const springBack = useCallback(() => {
@@ -222,6 +256,12 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
 
       // Below the slop the gesture is still a tap, so the card stays put.
       if (movedRef.current < TAP_SLOP) return
+      // Locked: the card gives a few px and shows no tint, because no grade is
+      // coming. The double-tap path above is untouched.
+      if (lockedRef.current) {
+        goto('drag', resist(nextDx), 0)
+        return
+      }
       goto('drag', nextDx)
     },
     [goto],
@@ -259,6 +299,12 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
       }
 
       lastTapRef.current = 0
+      if (lockedRef.current) {
+        springBack()
+        onBlocked?.()
+        return
+      }
+
       const current = dxRef.current
       const velocity = releaseVelocity(samplesRef.current, now())
       const farEnough = Math.abs(current) > thresholdRef.current
@@ -267,7 +313,7 @@ export function useSwipe({ onCommit, onDoubleTap }: UseSwipeOptions): UseSwipeRe
       if (current !== 0 && (farEnough || fastEnough)) fling(current > 0)
       else springBack()
     },
-    [fling, onDoubleTap, springBack],
+    [fling, onBlocked, onDoubleTap, springBack],
   )
 
   const handlers = useMemo<SwipeHandlers>(

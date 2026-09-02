@@ -3,7 +3,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../hooks/useStore'
 import { WordListProvider } from '../hooks/useWordList'
-import { loadStore } from '../lib/storage'
+import { loadStore, recordAttempt } from '../lib/storage'
+import { CORRECT_COLOR, INCORRECT_COLOR } from '../theme'
 import PracticePage from './PracticePage'
 
 const CSV = ['English,French,Gujarati', 'water,eau,પાણી'].join('\n')
@@ -30,6 +31,24 @@ async function renderPractice(csv = CSV) {
   await waitFor(() => expect(screen.queryByTestId('practice-card')).not.toBeNull())
 }
 
+/** Show the answer, which is what unlocks grading. */
+function reveal() {
+  fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+}
+
+/** Put a history on `eau` before the page mounts. */
+function seedAttempts(results: boolean[]) {
+  results.forEach((correct, i) => {
+    recordAttempt('French', KEY, correct, 1_700_000_000_000 + i * 1_000)
+  })
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
 beforeEach(() => {
   localStorage.clear()
 })
@@ -44,13 +63,16 @@ describe('PracticePage', () => {
     await renderPractice()
     expect(screen.getByText('eau')).toBeInTheDocument()
     expect(screen.getByText('#1')).toBeInTheDocument()
+    // A first-time word has no results to show, and no percentage anywhere.
+    expect(screen.queryByTestId('history-dots')).not.toBeInTheDocument()
+    expect(screen.queryByText(/% correct/)).not.toBeInTheDocument()
     expect(screen.queryByText('water')).not.toBeInTheDocument()
     expect(screen.queryByTestId('reveal-panel')).not.toBeInTheDocument()
   })
 
   it('reveals every other language on Space', async () => {
     await renderPractice()
-    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    reveal()
 
     const panel = screen.getByTestId('reveal-panel')
     expect(panel).toHaveTextContent('English')
@@ -61,7 +83,7 @@ describe('PracticePage', () => {
     expect(screen.getByText('eau')).toBeInTheDocument()
   })
 
-  it('reveals on a double tap of the card', async () => {
+  it('reveals on a double tap of the card, which still works while locked', async () => {
     await renderPractice()
     const card = screen.getByTestId('practice-card')
 
@@ -74,8 +96,51 @@ describe('PracticePage', () => {
     expect(screen.getByTestId('reveal-panel')).toBeInTheDocument()
   })
 
+  it('records nothing and disables the answer buttons before the reveal', async () => {
+    await renderPractice()
+    expect(screen.getByRole('button', { name: 'Correct' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Incorrect' })).toBeDisabled()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+
+    // Long enough for a committed swipe to have flown off and recorded.
+    await wait(350)
+    expect(loadStore().stats.French).toBeUndefined()
+    expect(screen.getByText('eau')).toBeInTheDocument()
+    expect(screen.getByTestId('reveal-hint')).toBeInTheDocument()
+  })
+
+  it('resists a drag and records nothing before the reveal', async () => {
+    await renderPractice()
+    const card = screen.getByTestId('practice-card')
+
+    fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 100, clientY: 200 })
+    fireEvent.pointerMove(card, { pointerId: 1, clientX: 180, clientY: 205 })
+    fireEvent.pointerMove(card, { pointerId: 1, clientX: 400, clientY: 210 })
+    fireEvent.pointerUp(card, { pointerId: 1, clientX: 400, clientY: 210 })
+
+    await wait(350)
+    expect(loadStore().stats.French).toBeUndefined()
+    expect(screen.getByTestId('reveal-hint')).toBeInTheDocument()
+    expect(screen.queryByTestId('reveal-panel')).not.toBeInTheDocument()
+  })
+
+  it('grades on ArrowRight once the card has been revealed', async () => {
+    await renderPractice()
+    reveal()
+    expect(screen.getByRole('button', { name: 'Correct' })).toBeEnabled()
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await waitFor(() => expect(loadStore().stats.French?.[KEY]).toHaveLength(1))
+    expect(loadStore().stats.French[KEY][0].correct).toBe(true)
+    // The next card comes up unrevealed, and so locked again.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Correct' })).toBeDisabled())
+  })
+
   it('commits a correct attempt when dragged right past the threshold', async () => {
     await renderPractice()
+    reveal()
     const card = screen.getByTestId('practice-card')
 
     fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 100, clientY: 200 })
@@ -91,6 +156,7 @@ describe('PracticePage', () => {
     let clock = 1000
     vi.spyOn(performance, 'now').mockImplementation(() => clock)
     await renderPractice()
+    reveal()
     const card = screen.getByTestId('practice-card')
 
     fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 200, clientY: 200 })
@@ -102,9 +168,7 @@ describe('PracticePage', () => {
     // 30 px in 200 ms: neither far enough nor fast enough.
     fireEvent.pointerUp(card, { pointerId: 1, clientX: 170, clientY: 200 })
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 350)
-    })
+    await wait(350)
     expect(loadStore().stats.French).toBeUndefined()
     expect(screen.getByText('eau')).toBeInTheDocument()
   })
@@ -114,6 +178,7 @@ describe('PracticePage', () => {
     let clock = 1000
     vi.spyOn(performance, 'now').mockImplementation(() => clock)
     await renderPractice()
+    reveal()
     const card = screen.getByTestId('practice-card')
 
     fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 200, clientY: 200 })
@@ -132,21 +197,69 @@ describe('PracticePage', () => {
   it('records a correct attempt on ArrowRight and an incorrect one on ArrowLeft', async () => {
     await renderPractice()
 
+    reveal()
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     await waitFor(() => expect(loadStore().stats.French?.[KEY]).toHaveLength(1))
     expect(loadStore().stats.French[KEY][0].correct).toBe(true)
 
+    reveal()
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
     await waitFor(() => expect(loadStore().stats.French?.[KEY]).toHaveLength(2))
     expect(loadStore().stats.French[KEY][1].correct).toBe(false)
   })
 
-  it('records an attempt from the check button and shows the running summary', async () => {
+  it('records an attempt from the check button and shows it as a result dot', async () => {
     await renderPractice()
+    reveal()
 
     fireEvent.click(screen.getByRole('button', { name: 'Correct' }))
     await waitFor(() => expect(loadStore().stats.French?.[KEY]).toHaveLength(1))
-    expect(await screen.findByText('#1 · seen 1× · 100% correct')).toBeInTheDocument()
+
+    const dots = await screen.findByTestId('history-dots')
+    expect(dots).toHaveAttribute('aria-label', 'Last 1 results: correct')
+    expect(screen.getAllByTestId('history-dot-correct')).toHaveLength(1)
+    expect(screen.getByText('#1')).toBeInTheDocument()
+  })
+
+  it('shows only the last 10 results as dots, oldest first', async () => {
+    // 12 attempts: the two oldest must not be shown.
+    const results = [
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]
+    seedAttempts(results)
+    await renderPractice()
+
+    const dots = screen.getByTestId('history-dots')
+    expect(dots.children).toHaveLength(10)
+    expect(screen.getAllByTestId('history-dot-incorrect')).toHaveLength(3)
+    expect(screen.getAllByTestId('history-dot-correct')).toHaveLength(7)
+    expect(dots).toHaveAttribute(
+      'aria-label',
+      'Last 10 results: incorrect, incorrect, incorrect, correct, correct, correct, correct, correct, correct, correct',
+    )
+
+    // Chronological, left to right, in the answer colours.
+    const first = dots.children[0]
+    const last = dots.children[9]
+    expect(first).toHaveAttribute('data-testid', 'history-dot-incorrect')
+    expect(last).toHaveAttribute('data-testid', 'history-dot-correct')
+    expect(first).toHaveStyle({ backgroundColor: INCORRECT_COLOR })
+    expect(last).toHaveStyle({ backgroundColor: CORRECT_COLOR })
+
+    // The percentage caption is gone for good.
+    expect(screen.queryByText(/% correct/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/seen/)).not.toBeInTheDocument()
   })
 
   it('undoes the last attempt and brings the card back unrevealed', async () => {
@@ -154,7 +267,7 @@ describe('PracticePage', () => {
     const undo = screen.getByRole('button', { name: 'Undo last answer' })
     expect(undo).toBeDisabled()
 
-    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+    reveal()
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     await waitFor(() => expect(loadStore().stats.French?.[KEY]).toHaveLength(1))
     await waitFor(() => expect(undo).toBeEnabled())

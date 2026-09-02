@@ -4,6 +4,12 @@ import { wordKey } from './wordKey'
 /** How many recently shown words to avoid repeating. */
 export const RECENT_WINDOW = 5
 
+/**
+ * Just the settings a draw depends on, so a caller with only these three does
+ * not have to invent (or spread) the rest of the stored settings.
+ */
+export type DrawSettings = Pick<Settings, 'presentationLanguage' | 'topN' | 'topShare'>
+
 /** Rows that can be practised in the given presentation language. */
 export function eligibleRows(rows: WordRow[], presLang: string): WordRow[] {
   return rows.filter((row) => Boolean(row.texts[presLang]))
@@ -23,7 +29,7 @@ export function eligibleRows(rows: WordRow[], presLang: string): WordRow[] {
  */
 export function pickNext(
   rows: WordRow[],
-  settings: Settings,
+  settings: DrawSettings,
   recentKeys: string[],
   rng: () => number = Math.random,
 ): WordRow {

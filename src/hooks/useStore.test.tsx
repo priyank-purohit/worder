@@ -14,17 +14,21 @@ function stored(): Store | null {
   return raw === null ? null : (JSON.parse(raw) as Store)
 }
 
-/** Shows the live presentation language and drives one mutation. */
+/** Shows the live settings and drives the mutations the tests need. */
 function Probe() {
   const { store, recordAttempt, updateSettings } = useStore()
   return (
     <>
       <span data-testid="pres-lang">{store.settings.presentationLanguage}</span>
+      <span data-testid="theme-mode">{store.settings.themeMode}</span>
       <button type="button" onClick={() => recordAttempt('French', 'eau::water', true, 1000)}>
         answer
       </button>
       <button type="button" onClick={() => updateSettings({ topN: 7 })}>
         set topN
+      </button>
+      <button type="button" onClick={() => updateSettings({ themeMode: 'dark' })}>
+        go dark
       </button>
     </>
   )
@@ -102,5 +106,51 @@ describe('StoreProvider with a stored language the word file lost', () => {
     // Only the language is repaired: the rest of the store survives.
     expect(stored()?.settings.topN).toBe(12)
     expect(stored()?.stats.Klingon?.['a::b']).toHaveLength(1)
+  })
+})
+
+describe('themeMode', () => {
+  it('defaults to system and persists a change', async () => {
+    await renderProvider()
+    expect(screen.getByTestId('theme-mode')).toHaveTextContent('system')
+
+    fireEvent.click(screen.getByRole('button', { name: 'go dark' }))
+
+    await waitFor(() => expect(stored()?.settings.themeMode).toBe('dark'))
+    expect(screen.getByTestId('theme-mode')).toHaveTextContent('dark')
+    // The rest of the settings are untouched by the theme change.
+    expect(stored()?.settings.presentationLanguage).toBe('French')
+  })
+
+  it('treats a store saved before themeMode existed as system', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        settings: { presentationLanguage: 'French', topN: 12, topShare: 0.4 },
+        stats: { French: { 'eau::water': [{ t: 1, correct: true }] } },
+      }),
+    )
+    await renderProvider()
+
+    expect(screen.getByTestId('theme-mode')).toHaveTextContent('system')
+    await waitFor(() => expect(stored()?.settings.themeMode).toBe('system'))
+    // Nothing else was disturbed by filling the gap in.
+    expect(stored()?.settings.topN).toBe(12)
+    expect(stored()?.stats.French?.['eau::water']).toHaveLength(1)
+  })
+
+  it('ignores a stored value that is not one of the three modes', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        settings: { presentationLanguage: 'French', topN: 12, topShare: 0.4, themeMode: 'sepia' },
+        stats: {},
+      }),
+    )
+    await renderProvider()
+
+    expect(screen.getByTestId('theme-mode')).toHaveTextContent('system')
   })
 })

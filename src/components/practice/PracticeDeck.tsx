@@ -2,15 +2,18 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import UndoIcon from '@mui/icons-material/Undo'
 import { Box, IconButton, Stack, Tooltip, Typography } from '@mui/material'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../hooks/useStore'
 import { RECENT_WINDOW, pickNext } from '../../lib/scheduler'
-import { summarize } from '../../lib/stats'
-import type { Settings, WordRow } from '../../lib/types'
+import type { DrawSettings } from '../../lib/scheduler'
+import type { Attempt, WordRow } from '../../lib/types'
 import { otherLanguages, wordKey } from '../../lib/wordKey'
 import { CORRECT_COLOR, INCORRECT_COLOR } from '../../theme'
 import SwipeCard from './SwipeCard'
 import { useSwipe } from './useSwipe'
+
+/** How long the "reveal first" nudge stays on the card, in ms. */
+const HINT_MS = 1200
 
 /** The answer that `Undo` would take back. One level is enough. */
 interface LastAnswer {
@@ -41,7 +44,7 @@ interface Deck {
 /** Draw the next card, remembering the last {@link RECENT_WINDOW} keys shown. */
 function drawDeck(
   rows: WordRow[],
-  settings: Settings,
+  settings: DrawSettings,
   languages: string[],
   recentKeys: string[],
 ): Deck {
@@ -73,7 +76,9 @@ export default function PracticeDeck({
 }: PracticeDeckProps) {
   const { store, recordAttempt, undoLastAttempt } = useStore()
 
-  const settings = useMemo<Settings>(
+  // The draw parameters come from the props: the page remounts this deck when
+  // they change, so an unrelated settings edit cannot redraw the current card.
+  const settings = useMemo<DrawSettings>(
     () => ({ presentationLanguage: presLang, topN, topShare }),
     [presLang, topN, topShare],
   )
@@ -86,8 +91,31 @@ export default function PracticeDeck({
   // Drawn once on mount; every later card comes from an answer or an undo.
   const [deck, setDeck] = useState<Deck>(() => drawDeck(rows, settings, languages, []))
   const [revealed, setRevealed] = useState(false)
+  const [hint, setHint] = useState(false)
   const [lastAnswer, setLastAnswer] = useState<LastAnswer | null>(null)
   const card = deck.card
+
+  const hintTimer = useRef<number | null>(null)
+
+  const clearHint = useCallback(() => {
+    if (hintTimer.current !== null) {
+      window.clearTimeout(hintTimer.current)
+      hintTimer.current = null
+    }
+    setHint(false)
+  }, [])
+
+  useEffect(() => clearHint, [clearHint])
+
+  /** Explain, briefly, why a gesture before the reveal did nothing. */
+  const showHint = useCallback(() => {
+    if (hintTimer.current !== null) window.clearTimeout(hintTimer.current)
+    setHint(true)
+    hintTimer.current = window.setTimeout(() => {
+      hintTimer.current = null
+      setHint(false)
+    }, HINT_MS)
+  }, [])
 
   const handleCommit = useCallback(
     (correct: boolean) => {
@@ -96,17 +124,25 @@ export default function PracticeDeck({
         recordAttempt(presLang, key, correct)
         setLastAnswer({ row: card, key })
       }
+      // Every new card starts unrevealed, and so locked again.
       setRevealed(false)
+      clearHint()
       setDeck((prev) => drawDeck(rows, settings, languages, prev.recentKeys))
     },
-    [card, keyOf, languages, presLang, recordAttempt, rows, settings],
+    [card, clearHint, keyOf, languages, presLang, recordAttempt, rows, settings],
   )
 
-  const reveal = useCallback(() => setRevealed(true), [])
+  const reveal = useCallback(() => {
+    setRevealed(true)
+    clearHint()
+  }, [clearHint])
 
   const { dx, progress, phase, cardRef, handlers, fling, reset } = useSwipe({
     onCommit: handleCommit,
     onDoubleTap: reveal,
+    // No grading until the answer has been seen.
+    locked: !revealed,
+    onBlocked: showHint,
   })
 
   const handleUndo = useCallback(() => {
@@ -114,9 +150,10 @@ export default function PracticeDeck({
     undoLastAttempt(presLang, lastAnswer.key)
     reset()
     setRevealed(false)
+    clearHint()
     setDeck((prev) => ({ card: lastAnswer.row, recentKeys: prev.recentKeys }))
     setLastAnswer(null)
-  }, [lastAnswer, presLang, reset, undoLastAttempt])
+  }, [clearHint, lastAnswer, presLang, reset, undoLastAttempt])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -127,6 +164,7 @@ export default function PracticeDeck({
         reveal()
       } else if (event.key === 'ArrowRight') {
         event.preventDefault()
+        // `fling` refuses (and nudges) while the card is still locked.
         fling(true)
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -139,9 +177,9 @@ export default function PracticeDeck({
 
   const otherLangs = useMemo(() => otherLanguages(languages, presLang), [languages, presLang])
 
-  const summary = useMemo(() => {
+  const attempts = useMemo<Attempt[]>(() => {
     const key = keyOf(card)
-    return summarize(key === null ? [] : (store.stats[presLang]?.[key] ?? []))
+    return key === null ? [] : (store.stats[presLang]?.[key] ?? [])
   }, [card, keyOf, presLang, store.stats])
 
   return (
@@ -163,8 +201,9 @@ export default function PracticeDeck({
         row={card}
         presLang={presLang}
         otherLangs={otherLangs}
-        summary={summary}
+        attempts={attempts}
         revealed={revealed}
+        hint={hint}
         dx={dx}
         progress={progress}
         phase={phase}
@@ -176,6 +215,7 @@ export default function PracticeDeck({
         <IconButton
           aria-label="Incorrect"
           onClick={() => fling(false)}
+          disabled={!revealed}
           sx={{
             color: INCORRECT_COLOR,
             border: 2,
@@ -201,6 +241,7 @@ export default function PracticeDeck({
         <IconButton
           aria-label="Correct"
           onClick={() => fling(true)}
+          disabled={!revealed}
           sx={{
             color: CORRECT_COLOR,
             border: 2,
@@ -213,7 +254,7 @@ export default function PracticeDeck({
       </Stack>
 
       <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-        Swipe right if you knew it, left if you did not · arrow keys work too
+        Reveal, then swipe right if you knew it, left if you did not · arrow keys work too
       </Typography>
     </Box>
   )

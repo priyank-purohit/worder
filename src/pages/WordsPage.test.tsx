@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import * as Highcharts from 'highcharts'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../hooks/useStore'
@@ -12,7 +13,7 @@ const KEY = 'eau::water'
 
 const seeded: Store = {
   version: 1,
-  settings: { presentationLanguage: 'French', topN: 500, topShare: 0.7 },
+  settings: { presentationLanguage: 'French', topN: 500, topShare: 0.7, themeMode: 'system' },
   stats: {
     French: {
       [KEY]: [
@@ -84,9 +85,23 @@ describe('WordsPage', () => {
     expect(screen.getByText('1 incorrect')).toBeInTheDocument()
     expect(screen.getByText('67% correct')).toBeInTheDocument()
     expect(screen.getByText('Accuracy over time')).toBeInTheDocument()
+    // A column of per-period accuracy plus the cumulative line.
     await waitFor(() =>
       expect(document.querySelectorAll('.highcharts-series').length).toBe(2),
     )
+
+    const chart = Highcharts.charts
+      .filter((candidate): candidate is Highcharts.Chart => Boolean(candidate))
+      .at(-1)
+    // Three attempts a day apart: one half-day period each, labelled locally.
+    const categories = chart?.xAxis[0].categories ?? []
+    expect(categories).toHaveLength(3)
+    for (const category of categories) {
+      expect(category).toMatch(/^[A-Z][a-z]{2} \d{1,2} 2026 (AM|PM)$/)
+    }
+    for (const category of categories) {
+      expect(screen.getByText(category)).toBeInTheDocument()
+    }
     // Newest attempt first.
     expect(screen.getAllByText(/^attempt \d+$/).map((el) => el.textContent)).toEqual([
       'attempt 3',

@@ -19,6 +19,9 @@ export interface Attempt {
   correct: boolean
 }
 
+/** Which palette to use. `system` follows the device's colour scheme. */
+export type ThemeMode = 'system' | 'light' | 'dark'
+
 export interface Settings {
   /** Language shown on the front of the card. */
   presentationLanguage: string
@@ -26,6 +29,8 @@ export interface Settings {
   topN: number
   /** Probability that a draw comes from the top-N pool (0..1). */
   topShare: number
+  /** Light / dark preference. Added after v1 shipped; missing means `system`. */
+  themeMode: ThemeMode
 }
 
 /** wordKey -> attempts, chronological. */

@@ -36,6 +36,10 @@ Pushing to `main` builds and publishes to GitHub Pages via
   treated as the most common words, and a draw comes from that pool with
   probability `topShare` (default 0.7) — so roughly 70% of cards come from the
   top 500 and 30% from the long tail. Both are adjustable in Settings.
+- The shipped file has **968 rows, sorted by English word frequency**
+  (`google-10000-english`, most common first), with rows that shared an English
+  word merged into one and their alternatives joined by `" / "` — `to / at`,
+  `a / an / one` — so no English word appears twice.
 
 ### Swapping in another language
 
@@ -59,9 +63,15 @@ recorded under the old language, is left untouched.
 One card at a time. Reveal the other languages with a double tap (or a
 double-click, or `Space`); the presentation word stays visible. Answer by
 swiping the card **right for correct, left for incorrect**, with the ✗ / ✓
-buttons under it, or with `ArrowLeft` / `ArrowRight`. Swiping without revealing
-still records the attempt. **Undo** takes back the last answer and brings that
-card back unrevealed.
+buttons under it, or with `ArrowLeft` / `ArrowRight`. **Grading is locked until
+you reveal**: before that the ✗ / ✓ buttons are disabled, the arrow keys do
+nothing and a swipe resists and springs back with a "Reveal the translation
+first" nudge, so a card can never be scored before you have seen the answer.
+**Undo** takes back the last answer and brings that card back unrevealed.
+
+The header of the card shows the word's rank plus a dot per result for its last
+ten attempts — green for correct, red for incorrect — and the word itself is
+sized to fit, so a single word is always on one line.
 
 The card sets `touch-action: pan-y`: the page still scrolls vertically, a double
 tap does not zoom, and — unlike `manipulation` — the browser does not steal the
@@ -86,3 +96,7 @@ Settings has **Export stats** (downloads `worder-stats-<date>.json`), **Import
 stats** (replaces everything in the file after a confirmation) and **Reset all
 stats** (keeps your settings, drops every attempt). Export before switching
 devices or clearing your browser.
+
+Settings also has an **Appearance** picker — **System** (follow the device's
+light/dark setting), **Light** or **Dark** — remembered with the rest of your
+settings.

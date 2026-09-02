@@ -1,10 +1,11 @@
-import { Box, Paper, Typography } from '@mui/material'
+import { Box, Fade, Paper, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import type { RefObject } from 'react'
-import type { Summary } from '../../lib/stats'
-import type { WordRow } from '../../lib/types'
+import type { Attempt, WordRow } from '../../lib/types'
 import { CORRECT_COLOR, INCORRECT_COLOR } from '../../theme'
+import HistoryDots from './HistoryDots'
 import RevealPanel from './RevealPanel'
+import { MAX_FONT_PX, PHONE_MAX_FONT_PX, isSingleToken, useFitText } from './useFitText'
 import { EXIT_MS, RETURN_MS } from './useSwipe'
 import type { SwipeHandlers, SwipePhase } from './useSwipe'
 
@@ -21,8 +22,11 @@ export interface SwipeCardProps {
   presLang: string
   /** Languages revealed at the bottom, in header order. */
   otherLangs: string[]
-  summary: Summary
+  /** The word's attempts in this language, chronological. */
+  attempts: Attempt[]
   revealed: boolean
+  /** True while the "reveal first" nudge is showing. */
+  hint: boolean
   dx: number
   progress: number
   phase: SwipePhase
@@ -37,12 +41,6 @@ function transitionFor(phase: SwipePhase): string {
   return 'none'
 }
 
-function caption(row: WordRow, summary: Summary): string {
-  const rank = `#${row.index + 1}`
-  if (summary.seen === 0 || summary.pctCorrect === null) return rank
-  return `${rank} · seen ${summary.seen}× · ${Math.round(summary.pctCorrect)}% correct`
-}
-
 /**
  * The draggable practice card. Purely presentational: all gesture state comes
  * from `useSwipe` so the page can also drive it from the buttons and keyboard.
@@ -51,14 +49,23 @@ export default function SwipeCard({
   row,
   presLang,
   otherLangs,
-  summary,
+  attempts,
   revealed,
+  hint,
   dx,
   progress,
   phase,
   cardRef,
   handlers,
 }: SwipeCardProps) {
+  const theme = useTheme()
+  const phone = useMediaQuery(theme.breakpoints.down('sm'))
+  const word = row.texts[presLang] ?? ''
+  const { ref: wordRef, fontSize } = useFitText<HTMLParagraphElement>(
+    word,
+    phone ? PHONE_MAX_FONT_PX : MAX_FONT_PX,
+  )
+
   const rotation = Math.max(
     -MAX_ROTATION_DEG,
     Math.min(MAX_ROTATION_DEG, dx / ROTATION_DIVISOR),
@@ -72,7 +79,7 @@ export default function SwipeCard({
       data-testid="practice-card"
       // A bare div's aria-label is ignored, so name a group instead.
       role="group"
-      aria-label={`Card ${row.index + 1}: ${row.texts[presLang] ?? ''}`}
+      aria-label={`Card ${row.index + 1}: ${word}`}
       {...handlers}
       sx={{
         position: 'relative',
@@ -111,9 +118,19 @@ export default function SwipeCard({
         }}
       />
 
-      <Typography variant="caption" color="text.secondary" sx={{ position: 'relative' }}>
-        {caption(row, summary)}
-      </Typography>
+      {/* Rank, then the recent results beside it — always on one line. */}
+      <Stack
+        direction="row"
+        spacing={0.75}
+        alignItems="center"
+        data-testid="card-header"
+        sx={{ position: 'relative', flexWrap: 'nowrap', maxWidth: '100%' }}
+      >
+        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+          {`#${row.index + 1}`}
+        </Typography>
+        <HistoryDots attempts={attempts} />
+      </Stack>
 
       <Box
         sx={{
@@ -127,24 +144,47 @@ export default function SwipeCard({
       >
         <Typography
           component="p"
+          ref={wordRef}
           data-testid="practice-word"
           lang={presLang}
           sx={{
-            fontSize: 'clamp(2rem, 8vw, 4rem)',
+            // Full width so the fitted size is measured against the space the
+            // word may actually use.
+            width: '100%',
+            fontSize: `${fontSize}px`,
             fontWeight: 600,
             lineHeight: 1.15,
             textAlign: 'center',
-            overflowWrap: 'anywhere',
-            hyphens: 'auto',
+            // The fitted size already guarantees the longest token fits, so a
+            // line may only ever break at a space — never inside a word.
+            overflowWrap: 'normal',
+            wordBreak: 'keep-all',
+            hyphens: 'none',
+            textWrap: 'balance',
+            ...(isSingleToken(word) ? { whiteSpace: 'nowrap' } : null),
           }}
         >
-          {row.texts[presLang] ?? ''}
+          {word}
         </Typography>
       </Box>
 
       <Box sx={{ position: 'relative', width: '100%', minHeight: 44 }}>
         {revealed ? (
           <RevealPanel row={row} languages={otherLangs} />
+        ) : hint ? (
+          <Fade in appear timeout={180}>
+            <Typography
+              variant="caption"
+              color="warning.main"
+              // Announced too: a screen-reader user gets no other explanation
+              // for the disabled answer buttons.
+              role="status"
+              data-testid="reveal-hint"
+              sx={{ display: 'block', textAlign: 'center', fontWeight: 600 }}
+            >
+              Reveal the translation first
+            </Typography>
+          </Fade>
         ) : (
           <Typography
             variant="caption"

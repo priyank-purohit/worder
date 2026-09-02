@@ -18,9 +18,26 @@ import {
   withAttempt,
   withoutLastAttempt,
 } from './storage'
-import type { Store } from './types'
+import type { Settings, Store } from './types'
 
 const LANGS = ['English', 'French', 'Gujarati', 'Hindi']
+
+/**
+ * A store exactly as it was written before `themeMode` existed. Typed loosely
+ * on purpose: this is what real localStorage and older export files hold.
+ */
+function legacyJson(settings: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    version: 1,
+    settings: { presentationLanguage: 'French', topN: 12, topShare: 0.4, ...settings },
+    stats: { French: { 'à::to': [{ t: 1, correct: true }] } },
+  })
+}
+
+/** Settings from before `themeMode`, for the reconcile path. */
+function legacySettings(settings: Record<string, unknown> = {}): Settings {
+  return { presentationLanguage: 'French', topN: 12, topShare: 0.4, ...settings } as Settings
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -32,6 +49,7 @@ describe('defaultSettings', () => {
       presentationLanguage: 'French',
       topN: 500,
       topShare: 0.7,
+      themeMode: 'system',
     })
     expect(defaultSettings(['English', 'Spanish']).presentationLanguage).toBe('Spanish')
     expect(defaultSettings(['English']).presentationLanguage).toBe('English')
@@ -120,7 +138,12 @@ describe('reconcile', () => {
   })
 
   it('falls back to the default when the file no longer has the language', () => {
-    const settings = { presentationLanguage: 'Klingon', topN: 12, topShare: 0.4 }
+    const settings: Settings = {
+      presentationLanguage: 'Klingon',
+      topN: 12,
+      topShare: 0.4,
+      themeMode: 'dark',
+    }
     expect(reconcileSettings(settings, LANGS)).toEqual({ ...settings, presentationLanguage: 'French' })
     // An empty language — what a store loaded before the CSV looks like.
     expect(reconcileSettings({ ...settings, presentationLanguage: '' }, LANGS).presentationLanguage).toBe(
@@ -137,11 +160,21 @@ describe('reconcile', () => {
   it('repairs only the language, keeping stats and the other settings', () => {
     const store: Store = {
       version: 1,
-      settings: { presentationLanguage: 'Klingon', topN: 12, topShare: 0.4 },
+      settings: {
+        presentationLanguage: 'Klingon',
+        topN: 12,
+        topShare: 0.4,
+        themeMode: 'light',
+      },
       stats: { Klingon: { 'a::b': [{ t: 1, correct: true }] } },
     }
     const repaired = reconcileStore(store, LANGS)
-    expect(repaired.settings).toEqual({ presentationLanguage: 'French', topN: 12, topShare: 0.4 })
+    expect(repaired.settings).toEqual({
+      presentationLanguage: 'French',
+      topN: 12,
+      topShare: 0.4,
+      themeMode: 'light',
+    })
     expect(repaired.stats).toBe(store.stats)
   })
 })
@@ -176,5 +209,42 @@ describe('parseStore / parseImport', () => {
     // parseImport validates but stores nothing.
     expect(parseImport(JSON.stringify(store)).stats).toEqual(store.stats)
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+})
+
+describe('themeMode backward compatibility', () => {
+  it('reads a store saved before themeMode existed as "system"', () => {
+    // localStorage written by an older build...
+    localStorage.setItem(STORAGE_KEY, legacyJson())
+    const loaded = loadStore(LANGS)
+    expect(loaded.settings.themeMode).toBe('system')
+    // ...with everything else it held intact.
+    expect(loaded.settings.topN).toBe(12)
+    expect(loaded.stats.French['à::to']).toEqual([{ t: 1, correct: true }])
+
+    // ...and an export file from the same build.
+    expect(parseImport(legacyJson()).settings.themeMode).toBe('system')
+    expect(parseStore(JSON.parse(legacyJson()) as unknown)?.settings.themeMode).toBe('system')
+    // reconcileSettings repairs the same gap, in place, without a word file.
+    expect(reconcileSettings(legacySettings(), LANGS).themeMode).toBe('system')
+    expect(reconcileSettings(legacySettings(), []).themeMode).toBe('system')
+  })
+
+  it('rejects a value that is not one of the three modes', () => {
+    for (const bad of ['sepia', '', 1, null, true, {}]) {
+      expect(parseImport(legacyJson({ themeMode: bad })).settings.themeMode).toBe('system')
+      expect(reconcileSettings(legacySettings({ themeMode: bad }), LANGS).themeMode).toBe('system')
+    }
+  })
+
+  it('keeps a valid stored mode, and persists a new one', () => {
+    expect(parseImport(legacyJson({ themeMode: 'dark' })).settings.themeMode).toBe('dark')
+    const settings = legacySettings({ themeMode: 'light' })
+    // Nothing to repair: the same object comes back.
+    expect(reconcileSettings(settings, LANGS)).toBe(settings)
+
+    expect(updateSettings({ themeMode: 'dark' }).settings.themeMode).toBe('dark')
+    expect(loadStore(LANGS).settings.themeMode).toBe('dark')
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('"themeMode":"dark"')
   })
 })

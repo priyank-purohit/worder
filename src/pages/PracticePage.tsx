@@ -7,8 +7,9 @@ import { useWordList } from '../hooks/useWordList'
 import { eligibleRows } from '../lib/scheduler'
 
 /**
- * `/` — one card at a time: reveal with a double tap or Space, answer by
+ * `/` — one card at a time: reveal with a double tap or Space, then answer by
  * swiping (right = correct, left = incorrect), the buttons, or the arrow keys.
+ * Grading is locked until the card has been revealed.
  */
 export default function PracticePage() {
   const { wordList } = useWordList()

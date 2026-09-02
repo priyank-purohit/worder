@@ -1,9 +1,10 @@
-import type { AllStats, Attempt, Settings, Store, WordStats } from './types'
+import type { AllStats, Attempt, Settings, Store, ThemeMode, WordStats } from './types'
 
 export const STORAGE_KEY = 'worder:v1'
 
 export const DEFAULT_TOP_N = 500
 export const DEFAULT_TOP_SHARE = 0.7
+export const DEFAULT_THEME_MODE: ThemeMode = 'system'
 /** Preferred presentation language when the word file has one. */
 const PREFERRED_LANGUAGE = 'French'
 
@@ -67,7 +68,20 @@ export function defaultSettings(languages: string[]): Settings {
     presentationLanguage,
     topN: DEFAULT_TOP_N,
     topShare: DEFAULT_TOP_SHARE,
+    themeMode: DEFAULT_THEME_MODE,
   }
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'system' || value === 'light' || value === 'dark'
+}
+
+/**
+ * A usable theme mode. Anything else — a store written before the setting
+ * existed, or a hand-edited/foreign value — becomes `system`.
+ */
+export function toThemeMode(value: unknown): ThemeMode {
+  return isThemeMode(value) ? value : DEFAULT_THEME_MODE
 }
 
 export function defaultStore(languages: string[] = []): Store {
@@ -75,15 +89,26 @@ export function defaultStore(languages: string[] = []): Store {
 }
 
 /**
- * Settings whose `presentationLanguage` is guaranteed to be one of `languages`.
- * A stored language the word file no longer has (or an empty one from a store
- * loaded before the CSV was known) falls back to the default for the file.
+ * Settings that are safe to use with `languages`:
+ * - `presentationLanguage` is one of `languages`. A stored language the word
+ *   file no longer has (or an empty one from a store loaded before the CSV was
+ *   known) falls back to the default for the file.
+ * - `themeMode` is one of the three modes, so a store written before that
+ *   setting existed gets `system` rather than `undefined`.
+ *
  * Returns the same object when nothing needs repairing.
  */
 export function reconcileSettings(settings: Settings, languages: string[]): Settings {
-  if (languages.length === 0) return settings
-  if (languages.includes(settings.presentationLanguage)) return settings
-  return { ...settings, presentationLanguage: defaultSettings(languages).presentationLanguage }
+  const themeMode = toThemeMode(settings.themeMode)
+  const badLanguage = languages.length > 0 && !languages.includes(settings.presentationLanguage)
+  if (!badLanguage && themeMode === settings.themeMode) return settings
+  return {
+    ...settings,
+    themeMode,
+    presentationLanguage: badLanguage
+      ? defaultSettings(languages).presentationLanguage
+      : settings.presentationLanguage,
+  }
 }
 
 /** {@link reconcileSettings}, applied to a whole store. Not persisted. */
@@ -135,6 +160,8 @@ function parseSettings(value: unknown): Settings | null {
     presentationLanguage,
     topN: Math.max(1, Math.floor(topN)),
     topShare: Math.min(1, Math.max(0, topShare)),
+    // Absent in stores written before the theme picker, and never trusted.
+    themeMode: toThemeMode(value.themeMode),
   }
 }
 

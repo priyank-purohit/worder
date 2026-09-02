@@ -12,6 +12,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   presentationLanguage: 'French',
   topN: 3,
   topShare: 0.7,
+  themeMode: 'system',
   ...over,
 })
 

@@ -5,6 +5,7 @@ import AttemptsPerDayChart from '../components/dashboard/AttemptsPerDayChart'
 import HardestWordsTable from '../components/dashboard/HardestWordsTable'
 import StatTiles from '../components/dashboard/StatTiles'
 import type { StatTile } from '../components/dashboard/StatTiles'
+import WordsPerPresentationChart from '../components/dashboard/WordsPerPresentationChart'
 import { useStore } from '../hooks/useStore'
 import { useWordList } from '../hooks/useWordList'
 import { eligibleRows } from '../lib/scheduler'
@@ -75,6 +76,15 @@ export default function DashboardPage() {
           </Typography>
           <Paper variant="outlined" sx={{ p: { xs: 1, sm: 2 } }}>
             <AccuracyByPresentationChart data={byPresentation} />
+          </Paper>
+        </section>
+
+        <section>
+          <Typography variant="h6" component="h3" gutterBottom>
+            Words reaching each presentation number
+          </Typography>
+          <Paper variant="outlined" sx={{ p: { xs: 1, sm: 2 } }}>
+            <WordsPerPresentationChart data={byPresentation} />
           </Paper>
         </section>
 

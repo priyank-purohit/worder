@@ -1,11 +1,20 @@
 import { createTheme } from '@mui/material/styles'
 import type { Theme } from '@mui/material/styles'
+import type { ThemeMode } from './lib/types'
 
 /** Answer colours, shared by the practice card and every chart. */
 export const CORRECT_COLOR = '#2e7d32'
 export const INCORRECT_COLOR = '#c62828'
 
-export function createAppTheme(mode: 'light' | 'dark'): Theme {
+export type PaletteMode = 'light' | 'dark'
+
+/** The palette the settings ask for: `system` defers to the device. */
+export function resolvePaletteMode(mode: ThemeMode, prefersDark: boolean): PaletteMode {
+  if (mode === 'system') return prefersDark ? 'dark' : 'light'
+  return mode
+}
+
+export function createAppTheme(mode: PaletteMode): Theme {
   return createTheme({
     palette: {
       mode,

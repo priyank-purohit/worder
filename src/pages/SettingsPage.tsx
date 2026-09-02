@@ -1,4 +1,5 @@
 import { Container, Stack, Typography } from '@mui/material'
+import AppearanceSection from '../components/settings/AppearanceSection'
 import DataSection from '../components/settings/DataSection'
 import PracticeSection from '../components/settings/PracticeSection'
 import WordFileSection from '../components/settings/WordFileSection'
@@ -10,6 +11,7 @@ export default function SettingsPage() {
         Settings
       </Typography>
       <Stack spacing={3} sx={{ mt: 2 }}>
+        <AppearanceSection />
         <PracticeSection />
         <WordFileSection />
         <DataSection />

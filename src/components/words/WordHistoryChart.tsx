@@ -1,14 +1,18 @@
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import * as Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
 import { useMemo } from 'react'
-import { runningAccuracy } from '../../lib/stats'
+import { halfDayPeriods } from '../../lib/stats'
 import type { Attempt } from '../../lib/types'
-import { CORRECT_COLOR, INCORRECT_COLOR } from '../../theme'
+import { CORRECT_COLOR } from '../../theme'
 import { axisTheme, baseChartOptions } from '../chartOptions'
 
+/** Past this many categories the labels only fit tilted. */
+const ROTATE_ABOVE = 6
+
 /**
- * Running accuracy over time: a thin line, plus one green/red dot per attempt.
+ * Accuracy per half-day (a local calendar day split at noon): one column for
+ * the accuracy inside each period, plus a dashed line of the running accuracy.
  * Renders nothing until the word has been practised at least once.
  */
 export default function WordHistoryChart({ attempts }: { attempts: Attempt[] }) {
@@ -17,14 +21,20 @@ export default function WordHistoryChart({ attempts }: { attempts: Attempt[] }) 
   const options = useMemo<Highcharts.Options>(() => {
     const base = baseChartOptions(theme)
     const axis = axisTheme(theme)
-    const points = runningAccuracy(attempts)
-    const paper = theme.palette.background.paper
+    const periods = halfDayPeriods(attempts)
 
     return {
       ...base,
-      chart: { ...base.chart, type: 'line' },
-      legend: { enabled: false },
-      xAxis: { ...axis, type: 'datetime' },
+      chart: { ...base.chart, type: 'column' },
+      xAxis: {
+        ...axis,
+        type: 'category',
+        categories: periods.map((period) => period.label),
+        labels: {
+          ...axis.labels,
+          rotation: periods.length > ROTATE_ABOVE ? -45 : 0,
+        },
+      },
       yAxis: {
         ...axis,
         min: 0,
@@ -35,41 +45,51 @@ export default function WordHistoryChart({ attempts }: { attempts: Attempt[] }) 
       },
       tooltip: {
         ...base.tooltip,
+        // One tooltip per category, whichever series is hovered — and both
+        // series share an index, so either one identifies the period.
+        shared: true,
         formatter(this: Highcharts.Point) {
-          // `chart.time` honours the zone set in `lib/highchartsSetup`.
-          const when = this.series.chart.time.dateFormat('%e %b %Y, %H:%M', this.x)
-          const custom = this.options.custom as { correct?: boolean } | undefined
-          const correct = custom?.correct === true
-          const color = correct ? CORRECT_COLOR : INCORRECT_COLOR
+          const period = periods[this.index]
+          if (!period) return false
+          const seen = period.correct + period.incorrect
           return [
-            `<b>${when}</b>`,
-            `<span style="color:${color}">${correct ? 'Correct' : 'Incorrect'}</span>`,
-            `Running accuracy: ${Math.round(this.y ?? 0)}%`,
-          ].join('<br/>')
+            period.label,
+            `${period.correct} of ${seen} correct`,
+            `cumulative ${Math.round(period.cumulativePct)}%`,
+          ].join(' · ')
         },
       },
-      plotOptions: { series: { animation: false } },
+      plotOptions: { column: { borderWidth: 0 }, series: { animation: false } },
       series: [
         {
-          type: 'line',
-          name: 'Running accuracy',
-          data: points.map((point): [number, number] => [point.t, point.pct]),
-          color: theme.palette.text.secondary,
-          lineWidth: 1,
-          marker: { enabled: false },
-          enableMouseTracking: false,
-          states: { hover: { enabled: false }, inactive: { opacity: 1 } },
+          type: 'column',
+          name: 'Correct in period',
+          color: alpha(CORRECT_COLOR, 0.85),
+          data: periods.map((period) => ({
+            y: period.pct,
+            custom: { score: `${period.correct}/${period.correct + period.incorrect}` },
+          })),
+          dataLabels: {
+            enabled: true,
+            format: '{point.custom.score}',
+            color: theme.palette.text.secondary,
+            // Sat on the card's own colour, so neither the cumulative line nor
+            // a grid line can cut through the score where they cross it.
+            backgroundColor: theme.palette.background.paper,
+            borderWidth: 0,
+            padding: 2,
+            borderRadius: 2,
+            style: { fontSize: '0.7rem', fontWeight: '400', textOutline: 'none' },
+          },
         },
         {
-          type: 'scatter',
-          name: 'Attempts',
-          data: points.map((point) => ({
-            x: point.t,
-            y: point.pct,
-            color: point.correct ? CORRECT_COLOR : INCORRECT_COLOR,
-            custom: { correct: point.correct },
-          })),
-          marker: { radius: 6, symbol: 'circle', lineWidth: 1, lineColor: paper },
+          type: 'line',
+          name: 'Cumulative accuracy',
+          data: periods.map((period) => period.cumulativePct),
+          color: theme.palette.text.secondary,
+          dashStyle: 'Dash',
+          lineWidth: 1,
+          marker: { enabled: true, radius: 3, symbol: 'circle' },
         },
       ],
     }

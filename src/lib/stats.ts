@@ -8,13 +8,6 @@ export interface Summary {
   pctCorrect: number | null
 }
 
-export interface AccuracyPoint {
-  t: number
-  correct: boolean
-  /** Cumulative percentage correct after this attempt. */
-  pct: number
-}
-
 export interface PresentationAccuracy {
   /** 1-based presentation number. */
   n: number
@@ -22,6 +15,19 @@ export interface PresentationAccuracy {
   pct: number
   /** How many words have been presented at least n times. */
   count: number
+}
+
+export interface HalfDayPeriod {
+  /** Epoch ms of the period's start: local midnight for AM, local noon for PM. */
+  start: number
+  /** `MMM D YYYY AM|PM`, e.g. "Sep 2 2026 PM". */
+  label: string
+  correct: number
+  incorrect: number
+  /** Percentage correct within the period. */
+  pct: number
+  /** Cumulative percentage correct over every attempt up to the end of the period. */
+  cumulativePct: number
 }
 
 export interface DayCount {
@@ -52,15 +58,6 @@ export function summarize(attempts: Attempt[]): Summary {
   }
 }
 
-/** Cumulative accuracy after each attempt, oldest first. */
-export function runningAccuracy(attempts: Attempt[]): AccuracyPoint[] {
-  let correct = 0
-  return attempts.map((attempt, i) => {
-    if (attempt.correct) correct += 1
-    return { t: attempt.t, correct: attempt.correct, pct: pct(correct, i + 1) }
-  })
-}
-
 /**
  * Accuracy on the n-th presentation of a word, aggregated over every word:
  * "how often do I get a word right the 1st / 2nd / 3rd time I see it?".
@@ -81,6 +78,60 @@ export function accuracyByPresentation(wordStats: WordStats): PresentationAccura
     pct: pct(correct[i] ?? 0, count),
     count,
   }))
+}
+
+/** English short month names, so a label never changes with the runtime locale. */
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+/**
+ * Attempts bucketed into local half-days: a local calendar day split at noon,
+ * so an attempt before 12:00 lands in that day's "AM" period and anything from
+ * 12:00 on lands in its "PM" period. Only periods that contain attempts are
+ * returned, oldest first, each carrying its own accuracy and the running
+ * accuracy across every attempt up to the end of that period.
+ */
+export function halfDayPeriods(attempts: Attempt[]): HalfDayPeriod[] {
+  const byStart = new Map<number, HalfDayPeriod>()
+
+  for (const attempt of attempts) {
+    const when = new Date(attempt.t)
+    const half = when.getHours() < 12 ? 'AM' : 'PM'
+    const start = new Date(
+      when.getFullYear(),
+      when.getMonth(),
+      when.getDate(),
+      half === 'AM' ? 0 : 12,
+    ).getTime()
+    const entry = byStart.get(start) ?? {
+      start,
+      label: `${SHORT_MONTHS[when.getMonth()]} ${when.getDate()} ${when.getFullYear()} ${half}`,
+      correct: 0,
+      incorrect: 0,
+      pct: 0,
+      cumulativePct: 0,
+    }
+    if (attempt.correct) entry.correct += 1
+    else entry.incorrect += 1
+    byStart.set(start, entry)
+  }
+
+  let correct = 0
+  let seen = 0
+  return [...byStart.values()]
+    .sort((a, b) => a.start - b.start)
+    .map((period) => {
+      const inPeriod = period.correct + period.incorrect
+      correct += period.correct
+      seen += inPeriod
+      return {
+        ...period,
+        pct: pct(period.correct, inPeriod),
+        cumulativePct: pct(correct, seen),
+      }
+    })
 }
 
 function dayKey(t: number): string {
