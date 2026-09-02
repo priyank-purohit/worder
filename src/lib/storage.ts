@@ -74,6 +74,24 @@ export function defaultStore(languages: string[] = []): Store {
   return { version: 1, settings: defaultSettings(languages), stats: {} }
 }
 
+/**
+ * Settings whose `presentationLanguage` is guaranteed to be one of `languages`.
+ * A stored language the word file no longer has (or an empty one from a store
+ * loaded before the CSV was known) falls back to the default for the file.
+ * Returns the same object when nothing needs repairing.
+ */
+export function reconcileSettings(settings: Settings, languages: string[]): Settings {
+  if (languages.length === 0) return settings
+  if (languages.includes(settings.presentationLanguage)) return settings
+  return { ...settings, presentationLanguage: defaultSettings(languages).presentationLanguage }
+}
+
+/** {@link reconcileSettings}, applied to a whole store. Not persisted. */
+export function reconcileStore(store: Store, languages: string[]): Store {
+  const settings = reconcileSettings(store.settings, languages)
+  return settings === store.settings ? store : { ...store, settings }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -162,30 +180,37 @@ export function saveStore(store: Store): void {
   }
 }
 
-/** Append an attempt and persist. Returns the new store. */
-export function recordAttempt(
+/** `saveStore`, returning the store so transforms can be written inline. */
+function persist(store: Store): Store {
+  saveStore(store)
+  return store
+}
+
+/* ------------------------------------------------------------------ */
+/* Pure transforms — the provider applies these to its in-memory store */
+/* ------------------------------------------------------------------ */
+
+/** `store` with one more attempt for `key` in `presLang`. */
+export function withAttempt(
+  store: Store,
   presLang: string,
   key: string,
   correct: boolean,
-  t: number = Date.now(),
+  t: number,
 ): Store {
-  const store = loadStore()
   const byLanguage = store.stats[presLang] ?? {}
   const attempts = byLanguage[key] ?? []
-  const next: Store = {
+  return {
     ...store,
     stats: {
       ...store.stats,
       [presLang]: { ...byLanguage, [key]: sortAttempts([...attempts, { t, correct }]) },
     },
   }
-  saveStore(next)
-  return next
 }
 
-/** Remove the most recent attempt for a word and persist. */
-export function undoLastAttempt(presLang: string, key: string): Store {
-  const store = loadStore()
+/** `store` without the most recent attempt for `key`; unchanged if it has none. */
+export function withoutLastAttempt(store: Store, presLang: string, key: string): Store {
   const byLanguage = store.stats[presLang]
   const attempts = byLanguage?.[key]
   if (!byLanguage || !attempts || attempts.length === 0) return store
@@ -199,23 +224,45 @@ export function undoLastAttempt(presLang: string, key: string): Store {
   if (Object.keys(nextByLanguage).length === 0) delete nextStats[presLang]
   else nextStats[presLang] = nextByLanguage
 
-  const next: Store = { ...store, stats: nextStats }
-  saveStore(next)
-  return next
+  return { ...store, stats: nextStats }
+}
+
+/** `store` with every attempt dropped, keeping settings. */
+export function withoutStats(store: Store): Store {
+  return { ...store, stats: {} }
+}
+
+/** `store` with `partial` merged into its settings. */
+export function withSettings(store: Store, partial: Partial<Settings>): Store {
+  return { ...store, settings: { ...store.settings, ...partial } }
+}
+
+/* ------------------------------------------------------------------ */
+/* Persisting wrappers, for callers that hold no store of their own    */
+/* ------------------------------------------------------------------ */
+
+/** Append an attempt and persist. Returns the new store. */
+export function recordAttempt(
+  presLang: string,
+  key: string,
+  correct: boolean,
+  t: number = Date.now(),
+): Store {
+  return persist(withAttempt(loadStore(), presLang, key, correct, t))
+}
+
+/** Remove the most recent attempt for a word and persist. */
+export function undoLastAttempt(presLang: string, key: string): Store {
+  return persist(withoutLastAttempt(loadStore(), presLang, key))
 }
 
 /** Drop every attempt, keeping settings. */
 export function resetStats(): Store {
-  const next: Store = { ...loadStore(), stats: {} }
-  saveStore(next)
-  return next
+  return persist(withoutStats(loadStore()))
 }
 
 export function updateSettings(partial: Partial<Settings>): Store {
-  const store = loadStore()
-  const next: Store = { ...store, settings: { ...store.settings, ...partial } }
-  saveStore(next)
-  return next
+  return persist(withSettings(loadStore(), partial))
 }
 
 export function exportJson(): string {
@@ -223,10 +270,10 @@ export function exportJson(): string {
 }
 
 /**
- * Replace the whole store with the contents of `json`.
+ * The store held in an export file. Nothing is stored — the caller decides.
  * Throws an `Error` when the JSON is unparseable or not a valid `Store`.
  */
-export function importJson(json: string): Store {
+export function parseImport(json: string): Store {
   let value: unknown
   try {
     value = JSON.parse(json) as unknown
@@ -237,6 +284,13 @@ export function importJson(json: string): Store {
   if (!store) {
     throw new Error('That file is not a worder stats export.')
   }
-  saveStore(store)
   return store
+}
+
+/**
+ * Replace the whole store with the contents of `json`.
+ * Throws an `Error` when the JSON is unparseable or not a valid `Store`.
+ */
+export function importJson(json: string): Store {
+  return persist(parseImport(json))
 }

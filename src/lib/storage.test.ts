@@ -2,15 +2,23 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   STORAGE_KEY,
   defaultSettings,
+  defaultStore,
   exportJson,
   importJson,
   loadStore,
+  parseImport,
+  parseStore,
+  reconcileSettings,
+  reconcileStore,
   recordAttempt,
   resetStats,
   saveStore,
   undoLastAttempt,
   updateSettings,
+  withAttempt,
+  withoutLastAttempt,
 } from './storage'
+import type { Store } from './types'
 
 const LANGS = ['English', 'French', 'Gujarati', 'Hindi']
 
@@ -102,5 +110,71 @@ describe('export / import', () => {
     expect(() =>
       importJson(JSON.stringify({ version: 1, settings: defaultSettings(LANGS), stats: { French: 1 } })),
     ).toThrow()
+  })
+})
+
+describe('reconcile', () => {
+  it('keeps a presentation language the word file still has', () => {
+    const settings = defaultSettings(LANGS)
+    expect(reconcileSettings(settings, LANGS)).toBe(settings)
+  })
+
+  it('falls back to the default when the file no longer has the language', () => {
+    const settings = { presentationLanguage: 'Klingon', topN: 12, topShare: 0.4 }
+    expect(reconcileSettings(settings, LANGS)).toEqual({ ...settings, presentationLanguage: 'French' })
+    // An empty language — what a store loaded before the CSV looks like.
+    expect(reconcileSettings({ ...settings, presentationLanguage: '' }, LANGS).presentationLanguage).toBe(
+      'French',
+    )
+  })
+
+  it('leaves the store alone when no word file is known yet', () => {
+    const store = defaultStore([])
+    expect(store.settings.presentationLanguage).toBe('')
+    expect(reconcileStore(store, [])).toBe(store)
+  })
+
+  it('repairs only the language, keeping stats and the other settings', () => {
+    const store: Store = {
+      version: 1,
+      settings: { presentationLanguage: 'Klingon', topN: 12, topShare: 0.4 },
+      stats: { Klingon: { 'a::b': [{ t: 1, correct: true }] } },
+    }
+    const repaired = reconcileStore(store, LANGS)
+    expect(repaired.settings).toEqual({ presentationLanguage: 'French', topN: 12, topShare: 0.4 })
+    expect(repaired.stats).toBe(store.stats)
+  })
+})
+
+describe('pure transforms', () => {
+  it('append and undo without touching storage', () => {
+    const base = defaultStore(LANGS)
+    const one = withAttempt(base, 'French', 'à::to', true, 100)
+    const two = withAttempt(one, 'French', 'à::to', false, 200)
+
+    expect(two.stats.French['à::to']).toEqual([
+      { t: 100, correct: true },
+      { t: 200, correct: false },
+    ])
+    // The inputs are untouched, and nothing was written.
+    expect(base.stats).toEqual({})
+    expect(one.stats.French['à::to']).toHaveLength(1)
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+
+    expect(withoutLastAttempt(two, 'French', 'à::to').stats.French['à::to']).toEqual([
+      { t: 100, correct: true },
+    ])
+    expect(withoutLastAttempt(base, 'French', 'à::to')).toBe(base)
+  })
+})
+
+describe('parseStore / parseImport', () => {
+  it('accepts a valid store and rejects anything else', () => {
+    const store = withAttempt(defaultStore(LANGS), 'French', 'à::to', true, 100)
+    expect(parseStore(JSON.parse(JSON.stringify(store)) as unknown)).toEqual(store)
+    expect(parseStore({ version: 1 })).toBeNull()
+    // parseImport validates but stores nothing.
+    expect(parseImport(JSON.stringify(store)).stats).toEqual(store.stats)
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 })

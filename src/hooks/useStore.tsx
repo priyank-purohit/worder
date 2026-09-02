@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as storage from '../lib/storage'
 import type { Settings, Store } from '../lib/types'
@@ -18,48 +18,75 @@ export interface StoreApi {
 const StoreContext = createContext<StoreApi | null>(null)
 
 /**
- * Holds the persisted store. Every mutation writes through to localStorage
- * (in-memory fallback when unavailable) and re-renders consumers.
+ * Holds the persisted store. This provider is the single source of truth: every
+ * mutation transforms the store it already has in memory and writes the result
+ * through to localStorage (in-memory fallback when unavailable), so nothing ever
+ * has to re-read storage without knowing the word file's languages.
  * Must be rendered inside a `WordListProvider`.
  */
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { wordList } = useWordList()
   const languages = wordList.languages
-  // Load once, repairing a presentation language that the word file no longer has.
-  const [store, setStore] = useState<Store>(() => {
-    const loaded = storage.loadStore(languages)
-    if (languages.length === 0 || languages.includes(loaded.settings.presentationLanguage)) {
-      return loaded
-    }
-    return storage.updateSettings({
-      presentationLanguage: storage.defaultSettings(languages).presentationLanguage,
+
+  // Loaded once, with the presentation language repaired when the word file
+  // does not have the stored one (or a fresh device stored nothing at all).
+  const [store, setStore] = useState<Store>(() =>
+    storage.reconcileStore(storage.loadStore(languages), languages),
+  )
+
+  // On a brand-new device that resolved store exists only in memory. Write it
+  // through on mount so the first visit already has a real presentation
+  // language on disk, and a reload picks up exactly what is on screen.
+  const initial = useRef(store)
+  useEffect(() => {
+    storage.saveStore(initial.current)
+  }, [])
+
+  /** Apply a pure transform to the live store and persist the result. */
+  const commit = useCallback((transform: (previous: Store) => Store) => {
+    setStore((previous) => {
+      const next = transform(previous)
+      if (next !== previous) storage.saveStore(next)
+      return next
     })
-  })
+  }, [])
 
   const recordAttempt = useCallback(
     (presLang: string, key: string, correct: boolean, t?: number) => {
-      setStore(storage.recordAttempt(presLang, key, correct, t ?? Date.now()))
+      const at = t ?? Date.now()
+      commit((previous) => storage.withAttempt(previous, presLang, key, correct, at))
     },
-    [],
+    [commit],
   )
 
-  const undoLastAttempt = useCallback((presLang: string, key: string) => {
-    setStore(storage.undoLastAttempt(presLang, key))
-  }, [])
+  const undoLastAttempt = useCallback(
+    (presLang: string, key: string) => {
+      commit((previous) => storage.withoutLastAttempt(previous, presLang, key))
+    },
+    [commit],
+  )
 
   const resetStats = useCallback(() => {
-    setStore(storage.resetStats())
-  }, [])
+    commit(storage.withoutStats)
+  }, [commit])
 
-  const updateSettings = useCallback((partial: Partial<Settings>) => {
-    setStore(storage.updateSettings(partial))
-  }, [])
+  const updateSettings = useCallback(
+    (partial: Partial<Settings>) => {
+      commit((previous) => storage.withSettings(previous, partial))
+    },
+    [commit],
+  )
 
-  const importJson = useCallback((json: string) => {
-    setStore(storage.importJson(json))
-  }, [])
+  const importJson = useCallback(
+    (json: string) => {
+      // `parseImport` throws on a bad file, before anything is stored.
+      const imported = storage.reconcileStore(storage.parseImport(json), languages)
+      commit(() => imported)
+    },
+    [commit, languages],
+  )
 
-  const exportJson = useCallback(() => storage.exportJson(), [])
+  const exportJson = useCallback(() => JSON.stringify(store, null, 2), [store])
 
   const value = useMemo<StoreApi>(
     () => ({

@@ -49,6 +49,28 @@ Statistics are stored per presentation language, keyed by
 history of any word whose pair is unchanged, and homographs (French `à` for both
 "to" and "at") stay separate.
 
+If the stored presentation language is not in the new header row, it falls back
+to the default for the file (`French` if present, else the second column) and
+that repair is saved straight away — the rest of the store, including stats
+recorded under the old language, is left untouched.
+
+## Practising
+
+One card at a time. Reveal the other languages with a double tap (or a
+double-click, or `Space`); the presentation word stays visible. Answer by
+swiping the card **right for correct, left for incorrect**, with the ✗ / ✓
+buttons under it, or with `ArrowLeft` / `ArrowRight`. Swiping without revealing
+still records the attempt. **Undo** takes back the last answer and brings that
+card back unrevealed.
+
+The card sets `touch-action: pan-y`: the page still scrolls vertically, a double
+tap does not zoom, and — unlike `manipulation` — the browser does not steal the
+horizontal drag, which would otherwise cancel the swipe mid-gesture.
+
+Charts read in the browser's own time zone (set once in
+`src/lib/highchartsSetup.ts`), and attempts are bucketed by local calendar day,
+so a late-evening session lands on the day it happened.
+
 ## Statistics, export and import
 
 Everything is written to a single `localStorage` key, `worder:v1`, as JSON.

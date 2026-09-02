@@ -65,11 +65,11 @@ export function runningAccuracy(attempts: Attempt[]): AccuracyPoint[] {
  * Accuracy on the n-th presentation of a word, aggregated over every word:
  * "how often do I get a word right the 1st / 2nd / 3rd time I see it?".
  */
-export function accuracyByPresentation(allStats: WordStats): PresentationAccuracy[] {
+export function accuracyByPresentation(wordStats: WordStats): PresentationAccuracy[] {
   const totals: number[] = []
   const correct: number[] = []
 
-  for (const attempts of Object.values(allStats)) {
+  for (const attempts of Object.values(wordStats)) {
     attempts.forEach((attempt, i) => {
       totals[i] = (totals[i] ?? 0) + 1
       correct[i] = (correct[i] ?? 0) + (attempt.correct ? 1 : 0)
@@ -91,9 +91,9 @@ function dayKey(t: number): string {
 }
 
 /** Correct/incorrect counts per local calendar day, oldest day first. */
-export function attemptsPerDay(allStats: WordStats): DayCount[] {
+export function attemptsPerDay(wordStats: WordStats): DayCount[] {
   const byDay = new Map<string, DayCount>()
-  for (const attempts of Object.values(allStats)) {
+  for (const attempts of Object.values(wordStats)) {
     for (const attempt of attempts) {
       const day = dayKey(attempt.t)
       const entry = byDay.get(day) ?? { day, correct: 0, incorrect: 0 }
@@ -106,12 +106,8 @@ export function attemptsPerDay(allStats: WordStats): DayCount[] {
 }
 
 /** Words with the worst accuracy first, ignoring words seen too few times. */
-export function hardestWords(
-  allStats: WordStats,
-  minAttempts = 3,
-  limit = 20,
-): HardWord[] {
-  return Object.entries(allStats)
+export function hardestWords(wordStats: WordStats, minAttempts = 3, limit = 20): HardWord[] {
+  return Object.entries(wordStats)
     .map(([key, attempts]) => ({ key, ...summarize(attempts) }))
     .filter((word): word is HardWord => word.seen >= minAttempts && word.pctCorrect !== null)
     .sort((a, b) => a.pctCorrect - b.pctCorrect || b.seen - a.seen || a.key.localeCompare(b.key))
@@ -119,7 +115,7 @@ export function hardestWords(
 }
 
 /** Totals across every word in one presentation language. */
-export function overallSummary(allStats: WordStats): Summary & { words: number } {
-  const all = Object.values(allStats).flat()
-  return { words: Object.keys(allStats).length, ...summarize(all) }
+export function overallSummary(wordStats: WordStats): Summary & { words: number } {
+  const all = Object.values(wordStats).flat()
+  return { words: Object.keys(wordStats).length, ...summarize(all) }
 }
