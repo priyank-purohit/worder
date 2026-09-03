@@ -36,10 +36,24 @@ Pushing to `main` builds and publishes to GitHub Pages via
   treated as the most common words, and a draw comes from that pool with
   probability `topShare` (default 0.7) — so roughly 70% of cards come from the
   top 500 and 30% from the long tail. Both are adjustable in Settings.
-- The shipped file has **968 rows, sorted by English word frequency**
-  (`google-10000-english`, most common first), with rows that shared an English
-  word merged into one and their alternatives joined by `" / "` — `to / at`,
-  `a / an / one` — so no English word appears twice.
+- The shipped file has **1996 French lemmas, sorted by film-subtitle lemma
+  frequency** — `freqlemfilms2` from **Lexique 3.83** (<http://www.lexique.org>;
+  New, Pallier, Brysbaert & Ferrand), most common first. Elided forms and
+  onomatopoeia are excluded and there is one row per lemma, so no French lemma
+  appears twice. Each gloss gives up to two senses joined by `" / "` —
+  `air / appearance`, `alone / only` — and verbs are glossed as `"to …"`
+  (`to be`, `to listen`). Four subtitle-corpus artifacts were dropped: `to` and
+  `com`, which are English text and URL fragments from inside subtitle files,
+  and the written abbreviations `mlle` and `mme`, whose spelled-out lemmas
+  `mademoiselle` and `madame` are already in the list. The same English gloss may
+  appear on more than one French row; the French lemma is what identifies a row.
+- Lexique is distributed under the **Creative Commons Attribution – ShareAlike
+  4.0** licence (CC BY-SA 4.0), so the frequency ranking here is reused with
+  attribution to New, B., Pallier, C., Brysbaert, M. & Ferrand, L., *Lexique 2:
+  A New French Lexical Database*, Behavior Research Methods, Instruments, &
+  Computers 36(3), 516–524 (2004).
+- The previous list — 968 rows in English-frequency order — is kept at
+  `data/words-english-968.csv`; copy it over `public/words.csv` to go back.
 
 ### Swapping in another language
 

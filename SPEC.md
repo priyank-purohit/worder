@@ -23,11 +23,17 @@ missing. Row order matters: **the first `topN` rows (default 500) are treated as
 most common words** and are drawn more often. Cells may contain commas inside quotes
 (use papaparse). Skip rows that have fewer than 2 non-empty cells. Trim cells.
 
-The shipped file holds **968 rows**, ordered by English word frequency
-(`google-10000-english`), most common first — so the row order is what makes
-`topN` meaningful. Rows that shared an English word were **merged into one row**
-with their alternatives joined by `" / "` (e.g. `to / at`, `a / an / one`), so no
-English word appears twice.
+The shipped file holds **1996 French lemmas** from **Lexique 3.83**
+(lexique.org — New, Pallier, Brysbaert & Ferrand), ranked by film-subtitle lemma
+frequency (`freqlemfilms2`), most common first — so the row order is what makes
+`topN` meaningful. Elided forms and onomatopoeia are excluded, and there is one
+row per lemma, so no French lemma appears twice. Glosses carry **up to two senses
+joined by `" / "`** (e.g. `air / appearance`, `alone / only`) and verbs are
+glossed as `"to …"` (`to be`, `to listen`). Four subtitle-corpus artifacts were
+dropped from the top 2000: `to` and `com` (English text and URL fragments inside
+subtitle files) and `mlle`/`mme` (written abbreviations whose spelled-out lemmas
+`mademoiselle`/`madame` are already in the list). Duplicate English glosses
+across different French rows are allowed — the row identity is the French lemma.
 
 Swapping to another language = replacing this file. Nothing else changes.
 
