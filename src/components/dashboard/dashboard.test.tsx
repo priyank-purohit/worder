@@ -57,19 +57,74 @@ describe('highcharts global setup', () => {
   })
 })
 
+/**
+ * The CSS rules emotion emitted for `element`'s own generated class, media
+ * queries included, with spaces stripped so they can be matched literally.
+ */
+function rulesFor(element: Element): string[] {
+  const own = [...element.classList].find((name) => name.startsWith('css-'))
+  if (own === undefined) return []
+  return [...document.querySelectorAll('style')]
+    .map((tag) => (tag.textContent ?? '').replace(/\s+/g, ''))
+    .filter((text) => text.includes(`.${own}{`))
+}
+
 describe('StatTiles', () => {
+  const tiles = [
+    { id: 'words-seen', label: 'Words seen', value: '12 / 400' },
+    { id: 'attempts', label: 'Attempts', value: '57' },
+  ]
+
   it('shows each value with its caption', () => {
-    render(
-      <StatTiles
-        tiles={[
-          { label: 'Words seen', value: '12 / 400' },
-          { label: 'Attempts', value: '57' },
-        ]}
-      />,
-    )
+    render(<StatTiles tiles={tiles} />)
     expect(screen.getByText('12 / 400')).toBeInTheDocument()
     expect(screen.getByText('Words seen')).toBeInTheDocument()
     expect(screen.getByText('57')).toBeInTheDocument()
+  })
+
+  it('gives each tile a stable test id', () => {
+    render(<StatTiles tiles={tiles} />)
+    expect(screen.getByTestId('tile-words-seen')).toHaveTextContent('12 / 400')
+    expect(screen.getByTestId('tile-attempts')).toHaveTextContent('57')
+  })
+
+  it('lays the tiles out as one grid: two columns on phones, four on desktop', () => {
+    render(<StatTiles tiles={tiles} />)
+    // A CSS grid, not MUI `Grid`: the `Grid` row's compensating negative
+    // margin was stripped by the `Stack` on DashboardPage, which left the row
+    // 16px wider than the page and offset from the section headings.
+    const grid = screen.getByTestId('stat-tiles')
+    expect(grid).toHaveStyle({ display: 'grid', gap: '12px', alignItems: 'stretch' })
+    // Every tile is a direct child, so the grid — not a wrapper — sizes them.
+    expect(tiles.map(({ id }) => screen.getByTestId(`tile-${id}`).parentElement)).toEqual([
+      grid,
+      grid,
+    ])
+    // jsdom computes no value for `grid-template-columns`, so the breakpoints
+    // are read off the rules emotion emitted for this element.
+    const rules = rulesFor(grid)
+    expect(rules.some((rule) => rule.includes('grid-template-columns:repeat(2,minmax(0,1fr))'))).toBe(
+      true,
+    )
+    expect(
+      rules.some(
+        (rule) =>
+          rule.includes('(min-width:900px)') &&
+          rule.includes('grid-template-columns:repeat(4,minmax(0,1fr))'),
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps every value on one line so the tiles stay the same height', () => {
+    render(<StatTiles tiles={tiles} />)
+    for (const tile of ['tile-words-seen', 'tile-attempts']) {
+      const paper = screen.getByTestId(tile)
+      const value = paper.querySelector('p')
+      const caption = paper.querySelector('span')
+      expect(getComputedStyle(value as Element).whiteSpace).toBe('nowrap')
+      expect(getComputedStyle(caption as Element).textOverflow).toBe('ellipsis')
+      expect(paper).toHaveStyle({ height: '100%', minWidth: '0px' })
+    }
   })
 })
 

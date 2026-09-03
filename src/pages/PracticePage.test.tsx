@@ -19,7 +19,7 @@ function stubFetch(csv: string) {
 
 async function renderPractice(csv = CSV) {
   stubFetch(csv)
-  render(
+  const view = render(
     <MemoryRouter>
       <WordListProvider>
         <StoreProvider>
@@ -29,6 +29,7 @@ async function renderPractice(csv = CSV) {
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.queryByTestId('practice-card')).not.toBeNull())
+  return view
 }
 
 /** Show the answer, which is what unlocks grading. */
@@ -51,6 +52,7 @@ function wait(ms: number) {
 
 beforeEach(() => {
   localStorage.clear()
+  document.body.style.overflow = ''
 })
 
 afterEach(() => {
@@ -83,17 +85,45 @@ describe('PracticePage', () => {
     expect(screen.getByText('eau')).toBeInTheDocument()
   })
 
-  it('reveals on a double tap of the card, which still works while locked', async () => {
+  it('reveals on a single tap of the card, which works while locked', async () => {
+    await renderPractice()
+    const card = screen.getByTestId('practice-card')
+    expect(screen.getByText('Tap the card or press Space to reveal')).toBeInTheDocument()
+
+    fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 100, clientY: 200 })
+    fireEvent.pointerUp(card, { pointerId: 1, clientX: 102, clientY: 201 })
+
+    // One tap is enough — it is the only thing that unlocks the card.
+    expect(screen.getByTestId('reveal-panel')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Correct' })).toBeEnabled()
+  })
+
+  it('does nothing when an already-revealed card is tapped', async () => {
+    await renderPractice()
+    const card = screen.getByTestId('practice-card')
+    reveal()
+
+    fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 100, clientY: 200 })
+    fireEvent.pointerUp(card, { pointerId: 1, clientX: 100, clientY: 200 })
+
+    await wait(50)
+    expect(screen.getByTestId('reveal-panel')).toBeInTheDocument()
+    expect(screen.getByText('eau')).toBeInTheDocument()
+    expect(loadStore().stats.French).toBeUndefined()
+  })
+
+  it('does not reveal on a 30 px drag — that is a swipe attempt, not a tap', async () => {
     await renderPractice()
     const card = screen.getByTestId('practice-card')
 
-    fireEvent.pointerDown(card)
-    fireEvent.pointerUp(card)
-    expect(screen.queryByTestId('reveal-panel')).not.toBeInTheDocument()
+    fireEvent.pointerDown(card, { pointerId: 1, button: 0, clientX: 100, clientY: 200 })
+    fireEvent.pointerMove(card, { pointerId: 1, clientX: 130, clientY: 200 })
+    fireEvent.pointerUp(card, { pointerId: 1, clientX: 130, clientY: 200 })
 
-    fireEvent.pointerDown(card)
-    fireEvent.pointerUp(card)
-    expect(screen.getByTestId('reveal-panel')).toBeInTheDocument()
+    await wait(350)
+    expect(screen.queryByTestId('reveal-panel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('reveal-hint')).toHaveTextContent('Tap the card to reveal first')
+    expect(loadStore().stats.French).toBeUndefined()
   })
 
   it('records nothing and disables the answer buttons before the reveal', async () => {
@@ -277,6 +307,25 @@ describe('PracticePage', () => {
     expect(screen.getByText('eau')).toBeInTheDocument()
     expect(screen.queryByTestId('reveal-panel')).not.toBeInTheDocument()
     expect(undo).toBeDisabled()
+  })
+
+  it('locks document scrolling while mounted and gives it back on unmount', async () => {
+    const { unmount } = await renderPractice()
+    // Nothing may scroll under a swipe while a card is on screen.
+    expect(document.body.style.overflow).toBe('hidden')
+
+    unmount()
+    // Words, Dashboard and Settings must scroll normally again afterwards.
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('restores whatever body overflow it found, not a hard-coded one', async () => {
+    document.body.style.overflow = 'auto'
+    const { unmount } = await renderPractice()
+    expect(document.body.style.overflow).toBe('hidden')
+
+    unmount()
+    expect(document.body.style.overflow).toBe('auto')
   })
 
   it('explains what to do when no row has the presentation language', async () => {

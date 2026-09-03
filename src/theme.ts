@@ -25,12 +25,7 @@ export function createAppTheme(mode: PaletteMode): Theme {
     typography: {
       h5: { fontWeight: 600 },
     },
-    components: {
-      MuiCssBaseline: {
-        styleOverrides: {
-          body: { overscrollBehaviorY: 'contain' },
-        },
-      },
-    },
+    // `overscroll-behavior` lives in `index.css`, on both `html` and `body`, so
+    // it is in force before `CssBaseline` mounts; there is no copy here.
   })
 }

@@ -18,6 +18,29 @@ body {
   margin: 0;
 }
 
+html,
+body {
+  /*
+   * No rubber-banding. On iOS an overscroll bounce moves the whole page under
+   * a slightly diagonal swipe, which cancels the practice card's gesture; and
+   * nothing in this app wants scroll chaining anyway.
+   */
+  overscroll-behavior: none;
+}
+
+/*
+ * A route that is exactly one viewport tall and never scrolls (Practice), so
+ * the card owns every gesture on it. `dvh` tracks the phone's collapsing
+ * toolbar; the `vh` line before it is the fallback where `dvh` is unknown.
+ */
+.viewport-shell {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
 #root {
   display: flex;
   flex-direction: column;

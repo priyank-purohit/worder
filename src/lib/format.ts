@@ -2,7 +2,7 @@ import type { WordRow } from './types'
 import { otherLanguages } from './wordKey'
 
 /** How translations are joined wherever several are shown on one line. */
-export const TEXT_SEPARATOR = ' / '
+const TEXT_SEPARATOR = ' / '
 
 /** The texts of `languages` that this row actually has, in header order. */
 export function textsOf(row: WordRow, languages: string[]): string[] {
@@ -12,7 +12,7 @@ export function textsOf(row: WordRow, languages: string[]): string[] {
 }
 
 /** The row's texts in every language except `presLang`, in header order. */
-export function otherTexts(row: WordRow, languages: string[], presLang: string): string[] {
+function otherTexts(row: WordRow, languages: string[], presLang: string): string[] {
   return textsOf(row, otherLanguages(languages, presLang))
 }
 

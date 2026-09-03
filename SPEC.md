@@ -131,15 +131,19 @@ Everything must be usable on phone, tablet and desktop.
   `white-space: nowrap` and is therefore always on **one line**; a multi-word entry
   may wrap, but only ever at a space (`overflow-wrap: normal`, `word-break: keep-all`,
   no hyphens) — never inside a word.
-- **Reveal**: double-tap / double-click on the card, or `Space` key. Shows the texts of
+- **Reveal**: a **single tap** / click on the card, or the `Space` key. A tap is a
+  press released under 8 px of movement (`TAP_SLOP`) and under 500 ms (`TAP_MAX_MS`);
+  anything further or slower is a drag for the rest of the gesture, whatever its
+  angle. Tapping an already-revealed card does nothing. The reveal shows the texts of
   every *other* language in small text at the bottom of the card, each labelled with
-  its language name. No flip animation. Word stays visible.
+  its language name. No flip animation. Word stays visible. Unrevealed, the same slot
+  reads `Tap the card or press Space to reveal`.
 - **Grading is locked until the card is revealed.** Before the reveal the ✗ / ✓ buttons
   are `disabled`, `ArrowLeft` / `ArrowRight` do nothing, and a drag resists (a fifth of
   the distance, capped at 12 px, no colour tint) and springs back. A refused gesture
-  shows `Reveal the translation first` for 1.2 s in the same fixed-height slot the
-  reveal panel uses, so nothing on the card moves. Double-tap always works — it is how
-  the card is unlocked. Every new card starts unrevealed, and so locked again.
+  shows `Tap the card to reveal first` for 1.2 s in the same fixed-height slot the
+  reveal panel uses, so nothing on the card moves. A tap always works — it is how the
+  card is unlocked. Every new card starts unrevealed, and so locked again.
 - **Swipe right = correct, swipe left = incorrect.** Pointer-event drag with the card
   following the finger, slight rotation, green/red tint that grows with distance.
   Commit when released past ~35% of card width or with enough velocity; otherwise
@@ -149,18 +153,66 @@ Everything must be usable on phone, tablet and desktop.
   language and word key.
 - **Undo** button (`UndoIcon`): removes the last recorded attempt and brings that card
   back (unrevealed). Disabled when nothing to undo. One level is enough.
-- Double-tap must not zoom the page on iOS: `touch-action: pan-y` on the card (not
-  `manipulation`, which lets the browser steal the horizontal drag and cancel the
-  swipe mid-gesture) and `user-select: none`.
+- **The route is exactly one viewport tall and never scrolls.** A vertical pan or an
+  overscroll bounce used to move the page under a slightly diagonal swipe and cancel
+  the card's gesture. Three things together:
+  - `Layout` puts `.viewport-shell` (`index.css`) on the shell for `/` only —
+    `height: 100dvh` with a `100vh` fallback, `overflow: hidden` — and gives the
+    `Container` `overflow: hidden`. Every other route is untouched and scrolls as
+    usual.
+  - `PracticePage` also sets `document.body.style.overflow = 'hidden'` while it is
+    mounted and restores the previous value on unmount, so Words, Dashboard and
+    Settings still scroll after a visit to Practice.
+  - `html, body { overscroll-behavior: none }` (`index.css` — the only place it is
+    declared) kills the rubber-band.
+- Nothing may overflow that viewport, so the card is `flex: 1 1 auto; min-height: 0`
+  (capped at 520 px from `sm` up) instead of a fixed `min-height`, the buttons and the
+  helper line are `flex-shrink: 0`, and the helper line is `display: none` under a
+  700 px viewport height — the first thing to go rather than push the card out.
+- The card takes `touch-action: none`: it owns every gesture on it, which also blocks
+  double-tap zoom on iOS. `pan-y` used to leave vertical pans to the browser, which
+  would claim a slightly diagonal swipe mid-gesture (`pointercancel`) and lose it;
+  there is no page scroll left to hand one to. Plus `user-select: none`.
+- Helper line under the buttons: `Tap to reveal, then swipe right if you knew it, left
+  if not`, with ` · arrow keys work too` appended from `sm` up.
 
 ### `/words` and `/words/:key` Word stats (`src/pages/WordsPage.tsx`)
 
-- MUI `Autocomplete` over all rows for the current presentation language, matching
-  any language's text (case/diacritic-insensitive). Option label:
-  `<presWord> — <other texts joined by " / ">`.
-- Selecting navigates to `/words/<encodeURIComponent(key)>`.
-- Detail: all texts by language, rank `#index+1`, seen / correct / incorrect /
-  % correct chips. Empty state if never seen.
+- `/words` is a **browsable grid of every practisable word** for the current
+  presentation language, in file order (= frequency rank) — not a search box. An `h2`
+  "Words", a filter, a count line, then the tiles. `Layout` gives this route (and its
+  detail) `Container maxWidth="lg"` rather than `md`, so a desktop fits six columns.
+- **Filter** (`WordFilter`): a small `TextField` with a search icon, a clear button
+  (`aria-label="Clear filter"`) and `aria-label="Filter words"`. Substring match of
+  the folded input against *any* language's folded text, so `etre` finds `être` — the
+  fold is precomputed once per row in `buildWordOptions`. No result cap: the whole
+  match set is shown. The value lives in the URL as **`?q=`** (written with
+  `replace: true`, so typing does not fill the history stack) and is read back from it,
+  so the list is linkable and survives a reload. Filtering runs through
+  `useDeferredValue`, so a keystroke lands in the input before thousands of tiles
+  re-render.
+- **Count line**: `1,996 words · 120 seen · 63% correct` (`summarizeOptions`) — over
+  the *filtered* set; the percentage is omitted until something has been seen.
+- **Tiles** (`WordGrid` / `WordTile`): `grid-template-columns: repeat(auto-fill,
+  minmax(160px, 1fr))`, `gap: 8px` — two columns on a phone, six on a desktop. Each
+  tile is a `ButtonBase` link to `/words/<encodeURIComponent(key)>` showing the
+  presentation word, `#rank`, and the other languages on a second line, both
+  ellipsised on one line. `aria-label` is `<word> — <others>, rank <n>`. All ~2,000
+  are in the DOM at once, so the styling is declared **once** in `WordGrid` and the
+  tiles only carry class names, ripples are disabled, and `content-visibility: auto`
+  with `contain-intrinsic-size: 56px` lets the browser skip what is offscreen.
+- **Accuracy-coloured left border** (4 px): green `#2e7d32` at **≥ 70%**, `warning.main`
+  at **≥ 40%**, red `#c62828` below that, and the plain `divider` colour for a word
+  with no attempts in this language.
+- Tapping a tile navigates to the detail route, remembering the filter and the scroll
+  offset (`listMemory`, `sessionStorage`, every access guarded); the link also carries
+  `state={{ q }}`. Detail opens scrolled to the top.
+- `/words/:key` is the **detail page**, not a panel under the list: a back
+  `IconButton` (`aria-label="Back to words"`) beside the word as an `h2`, then all
+  texts by language, rank `#index+1`, seen / correct / incorrect / % correct chips.
+  Empty state if never seen. Back goes to `/words?q=<the filter that was in force>`
+  and the list resumes at the offset it was left at. An unknown key gets a warning
+  `Alert` with an "All words" button back to the list.
 - Highcharts chart, "Accuracy over time": x = **category axis of half-day periods**
   from `halfDayPeriods`, labelled `MMM D YYYY AM|PM` (e.g. `Sep 2 2026 PM`), tilted 45°
   past 6 categories. Two series on the **one** 0–100 % y axis: a green
@@ -171,8 +223,17 @@ Everything must be usable on phone, tablet and desktop.
 
 ### `/dashboard` (`src/pages/DashboardPage.tsx`)
 
-- Stat tiles: words seen / total eligible, total attempts, overall % correct, current
-  presentation language.
+- Stat tiles (`StatTiles`): words seen / total eligible, total attempts, overall %
+  correct, current presentation language — counts with thousands separators. A plain
+  **CSS grid** (`repeat(2, minmax(0, 1fr))`, four columns from `md`, `gap: 12px`), not
+  MUI `Grid`: `Grid container spacing` pads its items and cancels that with a negative
+  margin on the row, and the `Stack` on this page resets item margins
+  (`& > :not(style):not(style) { margin: 0 }`), which won on specificity — the row kept
+  `width: calc(100% + 16px)` and lost `margin-left: -16px`, so it sat 16 px right of
+  the section headings and overhung the right gutter. `minmax(0, 1fr)` plus
+  `min-width: 0` on the tile, a single-line `clamp(1.25rem, 6vw, 2rem)` value and an
+  ellipsised caption keep all four tiles exactly the same width and height. Each tile
+  has `data-testid="tile-<id>"` from its own stable `id`.
 - Chart A, "Accuracy by presentation number": green columns of `accuracyByPresentation`
   on a single 0–100 % y axis; tooltip spells out the ordinal and the sample count `n`.
 - Chart B, "Words reaching each presentation number": the sample size behind chart A as

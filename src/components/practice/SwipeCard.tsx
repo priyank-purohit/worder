@@ -86,17 +86,22 @@ export default function SwipeCard({
         overflow: 'hidden',
         boxSizing: 'border-box',
         width: 'min(92vw, 480px)',
-        minHeight: { xs: '55vh', sm: 420 },
+        // The card takes whatever height the page has left over: the Practice
+        // route is exactly one viewport tall and must never scroll, so a fixed
+        // `min-height` here is what used to push it over the edge.
+        flex: '1 1 auto',
+        minHeight: 0,
+        maxHeight: { sm: 520 },
         p: { xs: 2, sm: 3 },
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: 1.5,
-        // `manipulation` lets the browser claim a horizontal pan: it fires
-        // `pointercancel` after the first touchmove and the swipe never
-        // commits. `pan-y` keeps vertical page scrolling and still blocks
-        // double-tap zoom, so a double tap reveals instead of zooming.
-        touchAction: 'pan-y',
+        // The card owns every gesture on it. `pan-y` used to leave vertical
+        // pans to the browser, which would claim a slightly diagonal swipe
+        // mid-gesture (`pointercancel`) and lose it; the page cannot scroll
+        // any more, so there is nothing to leave. Also blocks double-tap zoom.
+        touchAction: 'none',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         cursor: 'grab',
@@ -135,7 +140,8 @@ export default function SwipeCard({
       <Box
         sx={{
           position: 'relative',
-          flex: 1,
+          flex: '1 1 auto',
+          minHeight: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -168,7 +174,7 @@ export default function SwipeCard({
         </Typography>
       </Box>
 
-      <Box sx={{ position: 'relative', width: '100%', minHeight: 44 }}>
+      <Box sx={{ position: 'relative', width: '100%', minHeight: 44, flexShrink: 0 }}>
         {revealed ? (
           <RevealPanel row={row} languages={otherLangs} />
         ) : hint ? (
@@ -182,7 +188,7 @@ export default function SwipeCard({
               data-testid="reveal-hint"
               sx={{ display: 'block', textAlign: 'center', fontWeight: 600 }}
             >
-              Reveal the translation first
+              Tap the card to reveal first
             </Typography>
           </Fade>
         ) : (
@@ -191,7 +197,7 @@ export default function SwipeCard({
             color="text.secondary"
             sx={{ display: 'block', textAlign: 'center' }}
           >
-            Double-tap or press Space to reveal
+            Tap the card or press Space to reveal
           </Typography>
         )}
       </Box>

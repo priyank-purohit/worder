@@ -7,8 +7,8 @@ export const COMMIT_RATIO = 0.35
 export const COMMIT_VELOCITY = 0.5
 /** Total movement below this (px) is a tap, not a drag. */
 export const TAP_SLOP = 8
-/** A second tap within this many ms counts as a double tap. */
-export const DOUBLE_TAP_MS = 300
+/** A press held longer than this is not a tap, however little it moved. */
+export const TAP_MAX_MS = 500
 /** How long the card takes to fly off screen. */
 export const EXIT_MS = 250
 /** How long the card takes to spring back to centre. */
@@ -42,11 +42,14 @@ export interface SwipeHandlers {
 export interface UseSwipeOptions {
   /** Called once the card has finished animating off screen. */
   onCommit: (correct: boolean) => void
-  /** Called on a double tap / double click on the card. */
-  onDoubleTap: () => void
+  /**
+   * Called on a tap / click on the card: a press released under
+   * {@link TAP_SLOP} px and {@link TAP_MAX_MS} ms.
+   */
+  onTap: () => void
   /**
    * While true the card cannot be graded: a drag resists and springs back, and
-   * `fling` does nothing. Double taps still work — that is how it is unlocked.
+   * `fling` does nothing. Taps still work — that is how it is unlocked.
    */
   locked?: boolean
   /** Called when a locked gesture or fling was refused, so the UI can explain. */
@@ -101,20 +104,23 @@ function releaseVelocity(samples: Sample[], releaseT: number): number {
 }
 
 /**
- * Pointer-event drag for the practice card, plus a hand-rolled double-tap
- * detector (`dblclick` is unreliable on touch).
+ * Pointer-event drag for the practice card, plus tap detection (`click` and
+ * `dblclick` are unreliable on touch, and a tap must not be mistaken for the
+ * start of a swipe).
  *
- * A gesture that moves less than {@link TAP_SLOP} never moves the card and is
- * reported as a tap; anything further is a drag that commits past
- * {@link COMMIT_RATIO} of the card width or above {@link COMMIT_VELOCITY}, and
- * springs back otherwise.
+ * A gesture released under {@link TAP_SLOP} px and {@link TAP_MAX_MS} ms never
+ * moves the card and is reported as a tap. Past the slop it is a drag — and it
+ * stays one for the rest of the gesture, whatever its angle, because the
+ * Practice page cannot scroll and so has nothing to hand a vertical pan to. A
+ * drag commits past {@link COMMIT_RATIO} of the card width or above
+ * {@link COMMIT_VELOCITY}, and springs back otherwise.
  *
  * While `locked` the card may not be graded at all: drags resist and never
  * commit, `fling` is refused, and both report through `onBlocked`.
  */
 export function useSwipe({
   onCommit,
-  onDoubleTap,
+  onTap,
   locked = false,
   onBlocked,
 }: UseSwipeOptions): UseSwipeResult {
@@ -130,7 +136,7 @@ export function useSwipe({
   const movedRef = useRef(0)
   const samplesRef = useRef<Sample[]>([])
   const thresholdRef = useRef(FALLBACK_WIDTH * COMMIT_RATIO)
-  const lastTapRef = useRef(0)
+  const downAtRef = useRef(0)
   const timerRef = useRef<number | null>(null)
 
   // Read inside the pointer callbacks, which must not change identity mid-drag.
@@ -174,7 +180,6 @@ export function useSwipe({
       }
       pointerIdRef.current = null
       movedRef.current = 0
-      lastTapRef.current = 0
       measure()
       const distance = (typeof window === 'undefined' ? 0 : window.innerWidth) + cardWidth()
       clearTimer()
@@ -210,7 +215,6 @@ export function useSwipe({
     pointerIdRef.current = null
     movedRef.current = 0
     samplesRef.current = []
-    lastTapRef.current = 0
     goto('idle', 0)
   }, [clearTimer, goto])
 
@@ -233,6 +237,7 @@ export function useSwipe({
       const y = coord(event.clientY)
       startRef.current = { x, y }
       movedRef.current = 0
+      downAtRef.current = now()
       samplesRef.current = [{ x, t: now() }]
       measure()
       clearTimer()
@@ -256,8 +261,11 @@ export function useSwipe({
 
       // Below the slop the gesture is still a tap, so the card stays put.
       if (movedRef.current < TAP_SLOP) return
+      // Past the slop this is a horizontal drag for good — `movedRef` only ever
+      // grows, so a gesture that turns vertical is never handed back to the
+      // browser (which could not scroll the page anyway).
       // Locked: the card gives a few px and shows no tint, because no grade is
-      // coming. The double-tap path above is untouched.
+      // coming. The tap path above is untouched.
       if (lockedRef.current) {
         goto('drag', resist(nextDx), 0)
         return
@@ -286,19 +294,13 @@ export function useSwipe({
         return
       }
 
-      if (moved < TAP_SLOP) {
+      // A short, quick press is a tap — the only gesture that reveals a card.
+      if (moved < TAP_SLOP && now() - downAtRef.current < TAP_MAX_MS) {
         springBack()
-        const t = now()
-        if (t - lastTapRef.current <= DOUBLE_TAP_MS) {
-          lastTapRef.current = 0
-          onDoubleTap()
-        } else {
-          lastTapRef.current = t
-        }
+        onTap()
         return
       }
 
-      lastTapRef.current = 0
       if (lockedRef.current) {
         springBack()
         onBlocked?.()
@@ -313,7 +315,7 @@ export function useSwipe({
       if (current !== 0 && (farEnough || fastEnough)) fling(current > 0)
       else springBack()
     },
-    [fling, onBlocked, onDoubleTap, springBack],
+    [fling, onBlocked, onTap, springBack],
   )
 
   const handlers = useMemo<SwipeHandlers>(

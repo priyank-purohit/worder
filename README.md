@@ -74,22 +74,39 @@ recorded under the old language, is left untouched.
 
 ## Practising
 
-One card at a time. Reveal the other languages with a double tap (or a
-double-click, or `Space`); the presentation word stays visible. Answer by
-swiping the card **right for correct, left for incorrect**, with the ✗ / ✓
-buttons under it, or with `ArrowLeft` / `ArrowRight`. **Grading is locked until
-you reveal**: before that the ✗ / ✓ buttons are disabled, the arrow keys do
-nothing and a swipe resists and springs back with a "Reveal the translation
-first" nudge, so a card can never be scored before you have seen the answer.
-**Undo** takes back the last answer and brings that card back unrevealed.
+One card at a time. **Tap the card to reveal** the other languages (a click or
+`Space` does the same); the presentation word stays visible. Answer by swiping
+the card **right for correct, left for incorrect**, with the ✗ / ✓ buttons under
+it, or with `ArrowLeft` / `ArrowRight`. **Grading is locked until you reveal**:
+before that the ✗ / ✓ buttons are disabled, the arrow keys do nothing and a
+swipe resists and springs back with a "Tap the card to reveal first" nudge, so a
+card can never be scored before you have seen the answer. **Undo** takes back
+the last answer and brings that card back unrevealed.
 
 The header of the card shows the word's rank plus a dot per result for its last
 ten attempts — green for correct, red for incorrect — and the word itself is
 sized to fit, so a single word is always on one line.
 
-The card sets `touch-action: pan-y`: the page still scrolls vertically, a double
-tap does not zoom, and — unlike `manipulation` — the browser does not steal the
-horizontal drag, which would otherwise cancel the swipe mid-gesture.
+The practice screen is exactly one viewport tall and does not scroll — the card
+grows and shrinks to fit instead, and on a short screen the helper line under
+the buttons drops out. That is deliberate: the card takes every gesture on it
+(`touch-action: none`), so a swipe that drifts a little off the horizontal can
+no longer be stolen by the page scrolling or bouncing under your finger. Every
+other tab scrolls as usual.
+
+## Browsing the words
+
+The **Words** tab lists **every** word in the file, most common first, as a grid
+of tiles — two columns on a phone, six on a desktop — so you can just scroll
+through it. The filter above matches any language, ignoring case and accents
+(`etre` finds `être`), and lives in the address bar as `?q=`, so a filtered list
+can be bookmarked or shared. Each tile's left edge is coloured by how well you
+know that word: green from 70% correct, amber from 40%, red below, and grey for
+one you have not been asked yet.
+
+Tapping a tile opens that word's own page — every translation, its rank, its
+score, an accuracy-over-time chart and the full list of attempts. The back arrow
+returns to the list with the same filter, scrolled back to where you were.
 
 Charts read in the browser's own time zone (set once in
 `src/lib/highchartsSetup.ts`), and attempts are bucketed by local calendar day,

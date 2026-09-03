@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { WordList } from '../../lib/types'
+import type { WordList, WordStats } from '../../lib/types'
 import {
-  MAX_OPTIONS,
+  accuracyByKey,
   buildWordOptions,
   decodeKeyParam,
   filterWordOptions,
   findWordOption,
+  summarizeOptions,
 } from './options'
 
 const wordList: WordList = {
@@ -21,7 +22,7 @@ const wordList: WordList = {
 }
 
 describe('buildWordOptions', () => {
-  it('keys and labels every practisable row', () => {
+  it('keys every practisable row and joins its other languages', () => {
     const options = buildWordOptions(wordList, 'French')
     expect(options.map((option) => option.key)).toEqual([
       'à::to',
@@ -29,15 +30,15 @@ describe('buildWordOptions', () => {
       'eau::water',
       'déjà::already',
     ])
-    expect(options[0].label).toBe('à — to / ને')
-    expect(options[2].label).toBe('eau — water / પાણી')
+    expect(options[0].others).toBe('to / ને')
+    expect(options[2].others).toBe('water / પાણી')
   })
 
   it('follows the presentation language', () => {
     const options = buildWordOptions(wordList, 'English')
     expect(options).toHaveLength(5)
     expect(options[3].key).toBe('hello::નમસ્તે')
-    expect(options[3].label).toBe('hello — નમસ્તે')
+    expect(options[3].others).toBe('નમસ્તે')
   })
 })
 
@@ -59,7 +60,7 @@ describe('filterWordOptions', () => {
     expect(filterWordOptions(options, '   ')).toHaveLength(options.length)
   })
 
-  it('caps the number of matches', () => {
+  it('does not cap the matches — the grid shows the whole list', () => {
     const many: WordList = {
       languages: ['English', 'French'],
       rows: Array.from({ length: 200 }, (_, i) => ({
@@ -67,7 +68,7 @@ describe('filterWordOptions', () => {
         texts: { English: `word ${i}`, French: `mot ${i}` },
       })),
     }
-    expect(filterWordOptions(buildWordOptions(many, 'French'), 'mot')).toHaveLength(MAX_OPTIONS)
+    expect(filterWordOptions(buildWordOptions(many, 'French'), 'mot')).toHaveLength(200)
   })
 })
 
@@ -88,5 +89,54 @@ describe('findWordOption', () => {
     expect(findWordOption(options, 'eau::water')?.row.index).toBe(2)
     expect(findWordOption(options, 'nope::nope')).toBeNull()
     expect(findWordOption(options, null)).toBeNull()
+  })
+})
+
+const wordStats: WordStats = {
+  'eau::water': [
+    { t: 1, correct: true },
+    { t: 2, correct: false },
+    { t: 3, correct: true },
+  ],
+  'déjà::already': [{ t: 4, correct: false }],
+  // A key the word file no longer has: counted nowhere.
+  'gone::away': [{ t: 5, correct: true }],
+}
+
+describe('accuracyByKey', () => {
+  it('scores only the words that have been practised', () => {
+    const accuracy = accuracyByKey(wordStats)
+    expect(accuracy.get('eau::water')).toBeCloseTo(66.67, 1)
+    expect(accuracy.get('déjà::already')).toBe(0)
+    expect(accuracy.has('à::to')).toBe(false)
+  })
+
+  it('is empty without stats', () => {
+    expect(accuracyByKey({}).size).toBe(0)
+  })
+})
+
+describe('summarizeOptions', () => {
+  const options = buildWordOptions(wordList, 'French')
+
+  it('counts the listed words, how many are seen, and their accuracy', () => {
+    expect(summarizeOptions(options, wordStats)).toEqual({
+      words: 4,
+      seen: 2,
+      pctCorrect: 50,
+    })
+  })
+
+  it('follows the filter', () => {
+    const filtered = filterWordOptions(options, 'eau')
+    expect(summarizeOptions(filtered, wordStats)).toEqual({
+      words: 1,
+      seen: 1,
+      pctCorrect: (2 / 3) * 100,
+    })
+  })
+
+  it('has no percentage when nothing has been seen', () => {
+    expect(summarizeOptions(options, {})).toEqual({ words: 4, seen: 0, pctCorrect: null })
   })
 })

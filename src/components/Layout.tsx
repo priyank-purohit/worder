@@ -48,9 +48,25 @@ export default function Layout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const current = activePath(pathname)
+  /**
+   * Practice is a fixed one-viewport route: it must never scroll, because a
+   * vertical pan would steal the card's swipe half way through the gesture.
+   * `.viewport-shell` (in `index.css`) pins the shell to `100dvh`, with a
+   * `100vh` fallback, and clips anything that would stick out.
+   */
+  const fixedViewport = current === '/'
+  /**
+   * `md` (900 px) is right for a column of prose, charts and forms, but it caps
+   * the word grid at five columns on a desktop; the browsable list gets the
+   * wider container so a sixth fits.
+   */
+  const maxWidth = current === '/words' ? 'lg' : 'md'
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+    <Box
+      className={fixedViewport ? 'viewport-shell' : undefined}
+      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}
+    >
       {wide && (
         <AppBar position="sticky" color="default" enableColorOnDark elevation={1}>
           <Toolbar sx={{ gap: 3 }}>
@@ -72,14 +88,20 @@ export default function Layout() {
 
       <Container
         component="main"
-        maxWidth="md"
+        maxWidth={maxWidth}
         sx={{
-          flex: 1,
+          flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
           py: 2,
           // Keep content clear of the fixed bottom nav (plus the iOS home bar).
           pb: wide ? 2 : `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom) + 16px)`,
+          // Practice fits, or is clipped. Every other route must keep the
+          // automatic `min-height: auto` floor: without it this flex item stops
+          // at the free space, its content spills past its own padding box, and
+          // the `pb` above no longer holds the end of a long page clear of the
+          // bottom nav.
+          ...(fixedViewport ? { minHeight: 0, overflow: 'hidden' } : null),
         }}
       >
         <Outlet />

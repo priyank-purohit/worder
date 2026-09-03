@@ -137,9 +137,15 @@ export default function PracticeDeck({
     clearHint()
   }, [clearHint])
 
+  /** A tap reveals; on a card that is already revealed it does nothing. */
+  const handleTap = useCallback(() => {
+    if (revealed) return
+    reveal()
+  }, [reveal, revealed])
+
   const { dx, progress, phase, cardRef, handlers, fling, reset } = useSwipe({
     onCommit: handleCommit,
-    onDoubleTap: reveal,
+    onTap: handleTap,
     // No grading until the answer has been seen.
     locked: !revealed,
     onBlocked: showHint,
@@ -183,18 +189,22 @@ export default function PracticeDeck({
   }, [card, keyOf, presLang, store.stats])
 
   return (
+    // One viewport, no scrolling: the card takes the height the buttons and the
+    // helper line leave over, so a diagonal swipe can never scroll the page out
+    // from under the gesture.
     <Box
       sx={{
-        flex: 1,
+        flex: '1 1 auto',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 2,
+        gap: { xs: 1, sm: 2 },
         px: 1,
-        py: 1,
-        // The card flies past the viewport edge when an answer commits.
-        overflowX: 'hidden',
+        // The card flies past the viewport edge when an answer commits, and
+        // nothing here may ever spill out of the viewport.
+        overflow: 'hidden',
       }}
     >
       <SwipeCard
@@ -211,7 +221,12 @@ export default function PracticeDeck({
         handlers={handlers}
       />
 
-      <Stack direction="row" spacing={{ xs: 2, sm: 4 }} alignItems="center">
+      <Stack
+        direction="row"
+        spacing={{ xs: 2, sm: 4 }}
+        alignItems="center"
+        sx={{ flexShrink: 0 }}
+      >
         <IconButton
           aria-label="Incorrect"
           onClick={() => fling(false)}
@@ -253,8 +268,20 @@ export default function PracticeDeck({
         </IconButton>
       </Stack>
 
-      <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-        Reveal, then swipe right if you knew it, left if you did not · arrow keys work too
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{
+          flexShrink: 0,
+          textAlign: 'center',
+          // The first thing to go on a short viewport, rather than overflow it.
+          '@media (max-height: 699px)': { display: 'none' },
+        }}
+      >
+        Tap to reveal, then swipe right if you knew it, left if not
+        <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+          {' · arrow keys work too'}
+        </Box>
       </Typography>
     </Box>
   )

@@ -52,13 +52,19 @@ export default function DashboardPage() {
   }, [wordList, presLang])
 
   const tiles: StatTile[] = [
-    { label: 'Words seen', value: `${overall.words} / ${eligibleCount}` },
-    { label: 'Attempts', value: `${overall.seen}` },
     {
+      id: 'words-seen',
+      label: 'Words seen',
+      // Thousands separated, as everywhere else the word counts are shown.
+      value: `${overall.words.toLocaleString()} / ${eligibleCount.toLocaleString()}`,
+    },
+    { id: 'attempts', label: 'Attempts', value: overall.seen.toLocaleString() },
+    {
+      id: 'overall-correct',
       label: 'Overall correct',
       value: overall.pctCorrect === null ? '—' : `${Math.round(overall.pctCorrect)}%`,
     },
-    { label: 'Presentation language', value: presLang },
+    { id: 'presentation-language', label: 'Presentation language', value: presLang },
   ]
 
   return (

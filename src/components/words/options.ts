@@ -1,15 +1,16 @@
-import { TEXT_SEPARATOR, otherTexts, textsOf } from '../../lib/format'
+import { joinOtherTexts, textsOf } from '../../lib/format'
 import { normalizeText } from '../../lib/normalize'
-import type { WordList, WordRow } from '../../lib/types'
+import { summarize } from '../../lib/stats'
+import type { WordList, WordRow, WordStats } from '../../lib/types'
 import { wordKey } from '../../lib/wordKey'
 
-/** One searchable row, for the current presentation language. */
+/** One browsable row, for the current presentation language. */
 export interface WordOption {
   /** `wordKey(row, presLang)` — the identity stats are stored under. */
   key: string
   row: WordRow
-  /** `<presWord> — <other texts joined by " / ">`. */
-  label: string
+  /** The row's other languages joined by `" / "`, precomputed for the tile. */
+  others: string
   /**
    * Normalized text of every language on the row, so matching is
    * case- and diacritic-insensitive without re-folding on each keystroke.
@@ -17,12 +18,9 @@ export interface WordOption {
   search: string[]
 }
 
-/** How many matches the Autocomplete shows at once. */
-export const MAX_OPTIONS = 50
-
 /**
- * Every practisable row for `presLang`, in file order. Rows with no text in
- * `presLang` have no key and are skipped.
+ * Every practisable row for `presLang`, in file order (= frequency rank). Rows
+ * with no text in `presLang` have no key and are skipped.
  */
 export function buildWordOptions(wordList: WordList, presLang: string): WordOption[] {
   const { languages, rows } = wordList
@@ -31,12 +29,10 @@ export function buildWordOptions(wordList: WordList, presLang: string): WordOpti
   for (const row of rows) {
     const key = wordKey(row, presLang, languages)
     if (key === null) continue
-    const pres = row.texts[presLang]
-    const rest = otherTexts(row, languages, presLang)
     options.push({
       key,
       row,
-      label: rest.length > 0 ? `${pres} — ${rest.join(TEXT_SEPARATOR)}` : pres,
+      others: joinOtherTexts(row, languages, presLang),
       search: textsOf(row, languages).map(normalizeText),
     })
   }
@@ -45,25 +41,14 @@ export function buildWordOptions(wordList: WordList, presLang: string): WordOpti
 }
 
 /**
- * Substring match of the folded input against any language's folded text,
- * capped at `limit` so a large word file stays responsive.
+ * Substring match of the folded input against any language's folded text. Every
+ * match is returned — the grid shows the whole list and relies on the browser
+ * skipping offscreen cells.
  */
-export function filterWordOptions(
-  options: WordOption[],
-  input: string,
-  limit: number = MAX_OPTIONS,
-): WordOption[] {
+export function filterWordOptions(options: WordOption[], input: string): WordOption[] {
   const needle = normalizeText(input)
-  if (needle === '') return options.slice(0, limit)
-
-  const matches: WordOption[] = []
-  for (const option of options) {
-    if (option.search.some((text) => text.includes(needle))) {
-      matches.push(option)
-      if (matches.length >= limit) break
-    }
-  }
-  return matches
+  if (needle === '') return options
+  return options.filter((option) => option.search.some((text) => text.includes(needle)))
 }
 
 /**
@@ -79,4 +64,47 @@ export function decodeKeyParam(param: string): string {
 export function findWordOption(options: WordOption[], key: string | null): WordOption | null {
   if (key === null) return null
   return options.find((option) => option.key === key) ?? null
+}
+
+/**
+ * Accuracy (0–100) per word key, for the keys that have been practised. Built
+ * once per render pass so a tile can colour itself with a single map lookup.
+ */
+export function accuracyByKey(wordStats: WordStats): Map<string, number> {
+  const byKey = new Map<string, number>()
+  for (const [key, attempts] of Object.entries(wordStats)) {
+    const { pctCorrect } = summarize(attempts)
+    if (pctCorrect !== null) byKey.set(key, pctCorrect)
+  }
+  return byKey
+}
+
+export interface OptionsSummary {
+  /** How many words are listed. */
+  words: number
+  /** How many of them have at least one attempt in this language. */
+  seen: number
+  /** Accuracy over every attempt on the listed words; null when none. */
+  pctCorrect: number | null
+}
+
+/** The count line above the grid: how many words, how many seen, how well. */
+export function summarizeOptions(options: WordOption[], wordStats: WordStats): OptionsSummary {
+  let seen = 0
+  let attempts = 0
+  let correct = 0
+
+  for (const option of options) {
+    const history = wordStats[option.key]
+    if (history === undefined || history.length === 0) continue
+    seen += 1
+    attempts += history.length
+    for (const attempt of history) if (attempt.correct) correct += 1
+  }
+
+  return {
+    words: options.length,
+    seen,
+    pctCorrect: attempts === 0 ? null : (correct / attempts) * 100,
+  }
 }
