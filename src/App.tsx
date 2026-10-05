@@ -6,6 +6,7 @@ import Layout from './components/Layout'
 import { StoreProvider, useStore } from './hooks/useStore'
 import { WordListProvider } from './hooks/useWordList'
 import DashboardPage from './pages/DashboardPage'
+import PhrasesPage from './pages/PhrasesPage'
 import PracticePage from './pages/PracticePage'
 import SettingsPage from './pages/SettingsPage'
 import WordsPage from './pages/WordsPage'
@@ -37,6 +38,8 @@ function ThemedApp({ prefersDark }: { prefersDark: boolean }) {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<PracticePage />} />
+            <Route path="/phrases" element={<PhrasesPage />} />
+            <Route path="/phrases/stats" element={<PhrasesPage />} />
             <Route path="/words" element={<WordsPage />} />
             <Route path="/words/:key" element={<WordsPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />

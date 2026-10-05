@@ -9,6 +9,8 @@ function renderAt(path: string) {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<p>practice</p>} />
+          <Route path="/phrases" element={<p>phrases</p>} />
+          <Route path="/phrases/stats" element={<p>phrase stats</p>} />
           <Route path="/words" element={<p>words</p>} />
           <Route path="/words/:key" element={<p>word</p>} />
           <Route path="/settings" element={<p>settings</p>} />
@@ -29,6 +31,23 @@ describe('Layout', () => {
     // overflow clips what is left over.
     expect(getComputedStyle(main()).overflow).toBe('hidden')
     expect(getComputedStyle(main()).minHeight).toBe('0px')
+  })
+
+  it('pins the shell on the phrase deck too, but not on its stats view', () => {
+    renderAt('/phrases')
+    expect(shell()).toHaveClass('viewport-shell')
+    expect(getComputedStyle(main()).overflow).toBe('hidden')
+
+    renderAt('/phrases/stats')
+    const stats = screen.getAllByRole('main')[1]
+    expect(stats.parentElement).not.toHaveClass('viewport-shell')
+    expect(getComputedStyle(stats).overflow).not.toBe('hidden')
+  })
+
+  it('has a Phrases tab between Practice and Words', () => {
+    renderAt('/phrases/stats')
+    const labels = screen.getAllByRole('button').map((button) => button.textContent)
+    expect(labels).toEqual(['Practice', 'Phrases', 'Words', 'Dashboard', 'Settings'])
   })
 
   it.each(['/words', '/words/eau%3A%3Awater', '/settings'])(

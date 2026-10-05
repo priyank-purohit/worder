@@ -55,6 +55,22 @@ Pushing to `main` builds and publishes to GitHub Pages via
 - The previous list — 968 rows in English-frequency order — is kept at
   `data/words-english-968.csv`; copy it over `public/words.csv` to go back.
 
+## The phrase list
+
+`public/phrases.csv` is a second file in exactly the same shape — the same
+header row of language names, one phrase per row — holding **200 everyday
+phrases for getting around as a tourist**: greetings and politeness, asking for
+help and directions, trains, buses and taxis, hotels, ordering and paying in a
+restaurant, shopping and money, emergencies and the pharmacy, telling the time,
+numbers and days, and tickets and sightseeing. Roughly the most useful first.
+Glosses follow the word list's conventions, and an ellipsis (`…`) marks a slot
+to fill in (`Où est… ?`).
+
+Phrases are practised from their own **Phrases** tab and keep their own stats:
+a phrase answered right or wrong never counts towards the word charts, and the
+other way round. The file is optional — if it is missing or unusable, the
+Phrases tab explains why and the rest of the app is unaffected.
+
 ### Swapping in another language
 
 Replace `public/words.csv` with a file in the same shape and nothing else
@@ -108,14 +124,33 @@ Tapping a tile opens that word's own page — every translation, its rank, its
 score, an accuracy-over-time chart and the full list of attempts. The back arrow
 returns to the list with the same filter, scrolled back to where you were.
 
+### Phrases
+
+The **Phrases** tab practises `public/phrases.csv` with the same card: tap to
+reveal, swipe right or left, undo, arrow keys. Every phrase is a common one, so
+cards are drawn evenly from the whole list rather than through the top-N split,
+and because a phrase wraps onto several lines it is capped at a smaller type
+size than a single word. The toggle at the top of the tab switches between
+**Practice** and **Stats**; Stats is the phrase deck's own dashboard — phrases
+seen, attempts, overall accuracy, attempts per day, accuracy by presentation
+number and the hardest phrases — and lives at `/phrases/stats`, so it can be
+bookmarked. Phrase stats never appear on the Dashboard tab, which is about words.
+
+The **Words** tab has a **Words | Phrases** toggle, so the same grid, filter and
+accuracy colouring work for the phrase list too; the choice lives in the address
+bar as `?set=phrases` alongside the filter, and a phrase's own page shows its
+history in the phrase deck.
+
 Charts read in the browser's own time zone (set once in
 `src/lib/highchartsSetup.ts`), and attempts are bucketed by local calendar day,
 so a late-evening session lands on the day it happened.
 
 ## Statistics, export and import
 
-Everything is written to a single `localStorage` key, `worder:v1`, as JSON.
-That means:
+Everything is written to a single `localStorage` key, `worder:v1`, as JSON —
+word attempts under `stats`, phrase attempts under `phraseStats`, both keyed by
+presentation language. A store or an export written before the phrase deck
+existed simply has no `phraseStats`, and reads as having none. That means:
 
 - Stats are **per device and per browser**. There is no account and nothing is
   uploaded anywhere.
@@ -125,8 +160,8 @@ That means:
 
 Settings has **Export stats** (downloads `worder-stats-<date>.json`), **Import
 stats** (replaces everything in the file after a confirmation) and **Reset all
-stats** (keeps your settings, drops every attempt). Export before switching
-devices or clearing your browser.
+stats** (keeps your settings, drops every attempt — words and phrases alike).
+Export before switching devices or clearing your browser.
 
 Settings also has an **Appearance** picker — **System** (follow the device's
 light/dark setting), **Light** or **Dark** — remembered with the rest of your

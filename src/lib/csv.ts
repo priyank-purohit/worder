@@ -4,6 +4,9 @@ import type { WordList, WordRow } from './types'
 /** Minimum number of non-empty cells a data row must have to be kept. */
 const MIN_CELLS = 2
 
+export const WORDS_FILE = 'words.csv'
+export const PHRASES_FILE = 'phrases.csv'
+
 /**
  * Parse the word file. The first non-empty line is the header and holds the
  * language names; every following line is one word. Cells are trimmed, empty
@@ -46,12 +49,22 @@ export function parseWordList(csvText: string): WordList {
   return { languages, rows }
 }
 
-/** Fetch and parse `public/words.csv` (respecting the Vite base path). */
-export async function fetchWordList(): Promise<WordList> {
-  const url = `${import.meta.env.BASE_URL}words.csv`
+/** Fetch and parse a CSV from `public/` (respecting the Vite base path). */
+async function fetchCsvList(file: string): Promise<WordList> {
+  const url = `${import.meta.env.BASE_URL}${file}`
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Could not load ${url} (HTTP ${res.status})`)
   }
   return parseWordList(await res.text())
+}
+
+/** `public/words.csv` — the word deck. */
+export function fetchWordList(): Promise<WordList> {
+  return fetchCsvList(WORDS_FILE)
+}
+
+/** `public/phrases.csv` — the phrase deck, in the same shape. */
+export function fetchPhraseList(): Promise<WordList> {
+  return fetchCsvList(PHRASES_FILE)
 }

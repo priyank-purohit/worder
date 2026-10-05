@@ -24,6 +24,8 @@ export interface SwipeCardProps {
   otherLangs: string[]
   /** The word's attempts in this language, chronological. */
   attempts: Attempt[]
+  /** Optional cap on the fitted font size; see `PracticeDeckProps.maxFontPx`. */
+  maxFontPx?: number
   revealed: boolean
   /** True while the "reveal first" nudge is showing. */
   hint: boolean
@@ -50,6 +52,7 @@ export default function SwipeCard({
   presLang,
   otherLangs,
   attempts,
+  maxFontPx,
   revealed,
   hint,
   dx,
@@ -61,9 +64,10 @@ export default function SwipeCard({
   const theme = useTheme()
   const phone = useMediaQuery(theme.breakpoints.down('sm'))
   const word = row.texts[presLang] ?? ''
+  const ceiling = phone ? PHONE_MAX_FONT_PX : MAX_FONT_PX
   const { ref: wordRef, fontSize } = useFitText<HTMLParagraphElement>(
     word,
-    phone ? PHONE_MAX_FONT_PX : MAX_FONT_PX,
+    maxFontPx === undefined ? ceiling : Math.min(maxFontPx, ceiling),
   )
 
   const rotation = Math.max(

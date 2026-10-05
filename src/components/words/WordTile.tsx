@@ -1,10 +1,14 @@
 import { ButtonBase } from '@mui/material'
 import { memo } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
+import type { DeckId } from '../../lib/types'
+import { detailPath } from './options'
 import type { WordOption } from './options'
 
 export interface WordTileProps {
   option: WordOption
+  /** Which deck the list is showing; the detail link carries it along. */
+  deck: DeckId
   presLang: string
   /** Accuracy 0–100, or null when the word has never been practised. */
   pct: number | null
@@ -35,7 +39,7 @@ function accentClass(pct: number | null): string {
  * wrapping spans that the grid styles by class name, because the whole list is
  * on the page at once and a `Paper`/`Typography` per cell is not affordable.
  */
-function WordTile({ option, presLang, pct, q, onNavigate }: WordTileProps) {
+function WordTile({ option, deck, presLang, pct, q, onNavigate }: WordTileProps) {
   const { row, others } = option
   const word = row.texts[presLang]
   const rank = row.index + 1
@@ -44,7 +48,7 @@ function WordTile({ option, presLang, pct, q, onNavigate }: WordTileProps) {
     <ButtonBase
       className={`WordTile${accentClass(pct)}`}
       component={RouterLink}
-      to={`/words/${encodeURIComponent(option.key)}`}
+      to={detailPath(option.key, deck)}
       state={{ q }}
       onClick={onNavigate}
       // No ripple: it would mount a TouchRipple for every cell in the list.

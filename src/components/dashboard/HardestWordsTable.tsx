@@ -9,8 +9,9 @@ import {
 import { Link as RouterLink } from 'react-router-dom'
 import { joinOtherTexts } from '../../lib/format'
 import type { HardWord } from '../../lib/stats'
-import type { WordRow } from '../../lib/types'
+import type { DeckId, WordRow } from '../../lib/types'
 import { KEY_SEPARATOR } from '../../lib/wordKey'
+import { deckNoun, detailPath } from '../words/options'
 import EmptyState from './EmptyState'
 
 export interface HardestWordsTableProps {
@@ -19,6 +20,8 @@ export interface HardestWordsTableProps {
   rowsByKey: Map<string, WordRow>
   presLang: string
   languages: string[]
+  /** Which deck the keys belong to; the detail links carry it along. */
+  deck?: DeckId
 }
 
 /** Presentation text and translations for a stats key, falling back to the key itself. */
@@ -46,16 +49,22 @@ export default function HardestWordsTable({
   rowsByKey,
   presLang,
   languages,
+  deck = 'words',
 }: HardestWordsTableProps) {
   if (words.length === 0) {
-    return <EmptyState minHeight={120}>Words appear here after 3+ attempts.</EmptyState>
+    const noun = deckNoun(deck)
+    return (
+      <EmptyState minHeight={120}>
+        {`${noun[0].toUpperCase()}${noun.slice(1)} appear here after 3+ attempts.`}
+      </EmptyState>
+    )
   }
 
   return (
     <Table size="small">
       <TableHead>
         <TableRow>
-          <TableCell>Word</TableCell>
+          <TableCell>{deck === 'phrases' ? 'Phrase' : 'Word'}</TableCell>
           <TableCell>Translation</TableCell>
           <TableCell align="right">Seen</TableCell>
           <TableCell align="right">% correct</TableCell>
@@ -74,7 +83,7 @@ export default function HardestWordsTable({
               <TableCell>
                 <Link
                   component={RouterLink}
-                  to={`/words/${encodeURIComponent(word.key)}`}
+                  to={detailPath(word.key, deck)}
                   underline="hover"
                   sx={{ fontWeight: 600 }}
                 >

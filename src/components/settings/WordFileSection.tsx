@@ -1,15 +1,16 @@
-import { Chip, Stack, Typography } from '@mui/material'
+import { Alert, Chip, Stack, Typography } from '@mui/material'
 import { useStore } from '../../hooks/useStore'
 import { useWordList } from '../../hooks/useWordList'
 import { eligibleRows } from '../../lib/scheduler'
 import SettingsSection from './SettingsSection'
 
-/** What the loaded `words.csv` contains. */
+/** What the loaded `words.csv` and `phrases.csv` contain. */
 export default function WordFileSection() {
-  const { wordList } = useWordList()
+  const { wordList, phraseList, phraseError } = useWordList()
   const { store } = useStore()
   const presLang = store.settings.presentationLanguage
   const eligible = eligibleRows(wordList.rows, presLang).length
+  const eligiblePhrases = eligibleRows(phraseList.rows, presLang).length
 
   return (
     <SettingsSection title="Word file">
@@ -36,8 +37,19 @@ export default function WordFileSection() {
           </Typography>
         </Stack>
 
+        {phraseError === null ? (
+          <Typography variant="body2" data-testid="phrase-file-summary">
+            {phraseList.rows.length.toLocaleString()} phrases in public/phrases.csv,{' '}
+            {eligiblePhrases.toLocaleString()} with a {presLang || 'presentation language'} text
+          </Typography>
+        ) : (
+          <Alert severity="warning" data-testid="phrase-file-error">
+            Phrases unavailable: {phraseError}
+          </Alert>
+        )}
+
         <Typography variant="caption" color="text.secondary">
-          To use another language, replace public/words.csv and redeploy.
+          To use another language, replace public/words.csv and public/phrases.csv and redeploy.
         </Typography>
       </Stack>
     </SettingsSection>

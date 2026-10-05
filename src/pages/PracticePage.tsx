@@ -1,27 +1,11 @@
 import { Alert, Link } from '@mui/material'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import PracticeDeck from '../components/practice/PracticeDeck'
+import { useNoDocumentScroll } from '../hooks/useNoDocumentScroll'
 import { useStore } from '../hooks/useStore'
 import { useWordList } from '../hooks/useWordList'
 import { eligibleRows } from '../lib/scheduler'
-
-/**
- * Belt and braces over `Layout`'s `.viewport-shell`: while Practice is on
- * screen the document itself may not scroll either, so no bounce or vertical
- * pan can interrupt a swipe. Restored when the route unmounts.
- */
-function useNoDocumentScroll() {
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const { body } = document
-    const previous = body.style.overflow
-    body.style.overflow = 'hidden'
-    return () => {
-      body.style.overflow = previous
-    }
-  }, [])
-}
 
 /**
  * `/` — one card at a time: reveal with a single tap or Space, then answer by
@@ -58,6 +42,7 @@ export default function PracticePage() {
     // A new key starts a fresh deck whenever the draw parameters change.
     <PracticeDeck
       key={`${presLang}|${topN}|${topShare}|${rows.length}`}
+      deck="words"
       rows={rows}
       languages={languages}
       presLang={presLang}

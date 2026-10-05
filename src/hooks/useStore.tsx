@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as storage from '../lib/storage'
-import type { Settings, Store } from '../lib/types'
+import type { DeckId, Settings, Store } from '../lib/types'
 import { useWordList } from './useWordList'
 
 export interface StoreApi {
   store: Store
-  recordAttempt: (presLang: string, key: string, correct: boolean, t?: number) => void
-  undoLastAttempt: (presLang: string, key: string) => void
+  recordAttempt: (deck: DeckId, presLang: string, key: string, correct: boolean, t?: number) => void
+  undoLastAttempt: (deck: DeckId, presLang: string, key: string) => void
   resetStats: () => void
   updateSettings: (partial: Partial<Settings>) => void
   /** Throws an Error with a user-readable message when `json` is not a valid export. */
@@ -52,16 +52,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const recordAttempt = useCallback(
-    (presLang: string, key: string, correct: boolean, t?: number) => {
+    (deck: DeckId, presLang: string, key: string, correct: boolean, t?: number) => {
       const at = t ?? Date.now()
-      commit((previous) => storage.withAttempt(previous, presLang, key, correct, at))
+      commit((previous) => storage.withAttempt(previous, deck, presLang, key, correct, at))
     },
     [commit],
   )
 
   const undoLastAttempt = useCallback(
-    (presLang: string, key: string) => {
-      commit((previous) => storage.withoutLastAttempt(previous, presLang, key))
+    (deck: DeckId, presLang: string, key: string) => {
+      commit((previous) => storage.withoutLastAttempt(previous, deck, presLang, key))
     },
     [commit],
   )

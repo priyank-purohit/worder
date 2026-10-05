@@ -21,7 +21,7 @@ function Probe() {
     <>
       <span data-testid="pres-lang">{store.settings.presentationLanguage}</span>
       <span data-testid="theme-mode">{store.settings.themeMode}</span>
-      <button type="button" onClick={() => recordAttempt('French', 'eau::water', true, 1000)}>
+      <button type="button" onClick={() => recordAttempt('words', 'French', 'eau::water', true, 1000)}>
         answer
       </button>
       <button type="button" onClick={() => updateSettings({ topN: 7 })}>

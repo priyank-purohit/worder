@@ -1,3 +1,6 @@
+import type { DeckId } from '../../lib/types'
+import { browsePath } from './options'
+
 /**
  * Where the word list was left, so coming back from a word's page lands in the
  * same place instead of at the top of two thousand words. Kept in
@@ -58,13 +61,13 @@ function filterFromState(state: unknown): string | null {
 }
 
 /**
- * Where a back link should go: `/words` with the filter that was in force,
- * taken from the link's own history state, or from the remembered one after a
- * reload dropped it.
+ * Where a back link should go: `/words` for the same deck, with the filter that
+ * was in force — taken from the link's own history state, or from the
+ * remembered one after a reload dropped it.
  */
-export function listPath(state: unknown): string {
+export function listPath(state: unknown, deck: DeckId): string {
   const q = filterFromState(state) ?? read(FILTER_KEY) ?? ''
-  return q === '' ? '/words' : `/words?q=${encodeURIComponent(q)}`
+  return browsePath(deck, q)
 }
 
 /** `window.scrollTo`, skipped when the page is already there. */

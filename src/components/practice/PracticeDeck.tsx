@@ -6,7 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../hooks/useStore'
 import { RECENT_WINDOW, pickNext } from '../../lib/scheduler'
 import type { DrawSettings } from '../../lib/scheduler'
-import type { Attempt, WordRow } from '../../lib/types'
+import { statsOf } from '../../lib/storage'
+import type { Attempt, DeckId, WordRow } from '../../lib/types'
 import { otherLanguages, wordKey } from '../../lib/wordKey'
 import { CORRECT_COLOR, INCORRECT_COLOR } from '../../theme'
 import SwipeCard from './SwipeCard'
@@ -22,6 +23,8 @@ interface LastAnswer {
 }
 
 export interface PracticeDeckProps {
+  /** Which stats bucket the answers go to: words or phrases. */
+  deck: DeckId
   /** Every row of the word file; `pickNext` applies the eligibility filter. */
   rows: WordRow[]
   /** Language names in header order. */
@@ -33,21 +36,27 @@ export interface PracticeDeckProps {
   presLang: string
   topN: number
   topShare: number
+  /**
+   * Cap on the fitted font size, below the card's own phone/desktop maximum.
+   * A phrase of several words wraps into lines, so it wants a lower cap than a
+   * single word does.
+   */
+  maxFontPx?: number
 }
 
 /** The card on screen, plus the keys the scheduler should avoid repeating. */
-interface Deck {
+interface Drawn {
   card: WordRow
   recentKeys: string[]
 }
 
 /** Draw the next card, remembering the last {@link RECENT_WINDOW} keys shown. */
-function drawDeck(
+function draw(
   rows: WordRow[],
   settings: DrawSettings,
   languages: string[],
   recentKeys: string[],
-): Deck {
+): Drawn {
   const card = pickNext(rows, settings, recentKeys)
   const key = wordKey(card, settings.presentationLanguage, languages)
   return {
@@ -68,11 +77,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * from a fresh card with nothing to undo.
  */
 export default function PracticeDeck({
+  deck,
   rows,
   languages,
   presLang,
   topN,
   topShare,
+  maxFontPx,
 }: PracticeDeckProps) {
   const { store, recordAttempt, undoLastAttempt } = useStore()
 
@@ -89,11 +100,11 @@ export default function PracticeDeck({
   )
 
   // Drawn once on mount; every later card comes from an answer or an undo.
-  const [deck, setDeck] = useState<Deck>(() => drawDeck(rows, settings, languages, []))
+  const [drawn, setDrawn] = useState<Drawn>(() => draw(rows, settings, languages, []))
   const [revealed, setRevealed] = useState(false)
   const [hint, setHint] = useState(false)
   const [lastAnswer, setLastAnswer] = useState<LastAnswer | null>(null)
-  const card = deck.card
+  const card = drawn.card
 
   const hintTimer = useRef<number | null>(null)
 
@@ -121,15 +132,15 @@ export default function PracticeDeck({
     (correct: boolean) => {
       const key = keyOf(card)
       if (key !== null) {
-        recordAttempt(presLang, key, correct)
+        recordAttempt(deck, presLang, key, correct)
         setLastAnswer({ row: card, key })
       }
       // Every new card starts unrevealed, and so locked again.
       setRevealed(false)
       clearHint()
-      setDeck((prev) => drawDeck(rows, settings, languages, prev.recentKeys))
+      setDrawn((prev) => draw(rows, settings, languages, prev.recentKeys))
     },
-    [card, clearHint, keyOf, languages, presLang, recordAttempt, rows, settings],
+    [card, clearHint, deck, keyOf, languages, presLang, recordAttempt, rows, settings],
   )
 
   const reveal = useCallback(() => {
@@ -153,13 +164,13 @@ export default function PracticeDeck({
 
   const handleUndo = useCallback(() => {
     if (!lastAnswer) return
-    undoLastAttempt(presLang, lastAnswer.key)
+    undoLastAttempt(deck, presLang, lastAnswer.key)
     reset()
     setRevealed(false)
     clearHint()
-    setDeck((prev) => ({ card: lastAnswer.row, recentKeys: prev.recentKeys }))
+    setDrawn((prev) => ({ card: lastAnswer.row, recentKeys: prev.recentKeys }))
     setLastAnswer(null)
-  }, [clearHint, lastAnswer, presLang, reset, undoLastAttempt])
+  }, [clearHint, deck, lastAnswer, presLang, reset, undoLastAttempt])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -185,8 +196,8 @@ export default function PracticeDeck({
 
   const attempts = useMemo<Attempt[]>(() => {
     const key = keyOf(card)
-    return key === null ? [] : (store.stats[presLang]?.[key] ?? [])
-  }, [card, keyOf, presLang, store.stats])
+    return key === null ? [] : (statsOf(store, deck)[presLang]?.[key] ?? [])
+  }, [card, deck, keyOf, presLang, store])
 
   return (
     // One viewport, no scrolling: the card takes the height the buttons and the
@@ -212,6 +223,7 @@ export default function PracticeDeck({
         presLang={presLang}
         otherLangs={otherLangs}
         attempts={attempts}
+        maxFontPx={maxFontPx}
         revealed={revealed}
         hint={hint}
         dx={dx}

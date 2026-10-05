@@ -1,4 +1,4 @@
-import type { AllStats, Attempt, Settings, Store, ThemeMode, WordStats } from './types'
+import type { AllStats, Attempt, DeckId, Settings, Store, ThemeMode, WordStats } from './types'
 
 export const STORAGE_KEY = 'worder:v1'
 
@@ -85,7 +85,20 @@ export function toThemeMode(value: unknown): ThemeMode {
 }
 
 export function defaultStore(languages: string[] = []): Store {
-  return { version: 1, settings: defaultSettings(languages), stats: {} }
+  return { version: 1, settings: defaultSettings(languages), stats: {}, phraseStats: {} }
+}
+
+/** Both decks, in the order they are shown. */
+export const DECKS: readonly DeckId[] = ['words', 'phrases']
+
+/** The stats bucket for a deck: words in `stats`, phrases in `phraseStats`. */
+export function statsOf(store: Store, deck: DeckId): AllStats {
+  return deck === 'phrases' ? store.phraseStats : store.stats
+}
+
+/** `store` with the bucket for `deck` replaced. */
+function withStatsOf(store: Store, deck: DeckId, stats: AllStats): Store {
+  return deck === 'phrases' ? { ...store, phraseStats: stats } : { ...store, stats }
 }
 
 /**
@@ -171,8 +184,10 @@ export function parseStore(value: unknown): Store | null {
   if (value.version !== 1) return null
   const settings = parseSettings(value.settings)
   const stats = parseStats(value.stats)
-  if (!settings || !stats) return null
-  return { version: 1, settings, stats }
+  // Absent in stores and exports written before the phrase deck existed.
+  const phraseStats = value.phraseStats === undefined ? {} : parseStats(value.phraseStats)
+  if (!settings || !stats || !phraseStats) return null
+  return { version: 1, settings, stats, phraseStats }
 }
 
 function sortAttempts(attempts: Attempt[]): Attempt[] {
@@ -217,28 +232,33 @@ function persist(store: Store): Store {
 /* Pure transforms — the provider applies these to its in-memory store */
 /* ------------------------------------------------------------------ */
 
-/** `store` with one more attempt for `key` in `presLang`. */
+/** `store` with one more attempt for `key` in `presLang`, in the `deck` bucket. */
 export function withAttempt(
   store: Store,
+  deck: DeckId,
   presLang: string,
   key: string,
   correct: boolean,
   t: number,
 ): Store {
-  const byLanguage = store.stats[presLang] ?? {}
+  const stats = statsOf(store, deck)
+  const byLanguage = stats[presLang] ?? {}
   const attempts = byLanguage[key] ?? []
-  return {
-    ...store,
-    stats: {
-      ...store.stats,
-      [presLang]: { ...byLanguage, [key]: sortAttempts([...attempts, { t, correct }]) },
-    },
-  }
+  return withStatsOf(store, deck, {
+    ...stats,
+    [presLang]: { ...byLanguage, [key]: sortAttempts([...attempts, { t, correct }]) },
+  })
 }
 
 /** `store` without the most recent attempt for `key`; unchanged if it has none. */
-export function withoutLastAttempt(store: Store, presLang: string, key: string): Store {
-  const byLanguage = store.stats[presLang]
+export function withoutLastAttempt(
+  store: Store,
+  deck: DeckId,
+  presLang: string,
+  key: string,
+): Store {
+  const stats = statsOf(store, deck)
+  const byLanguage = stats[presLang]
   const attempts = byLanguage?.[key]
   if (!byLanguage || !attempts || attempts.length === 0) return store
 
@@ -247,16 +267,16 @@ export function withoutLastAttempt(store: Store, presLang: string, key: string):
   if (remaining.length === 0) delete nextByLanguage[key]
   else nextByLanguage[key] = remaining
 
-  const nextStats: AllStats = { ...store.stats }
+  const nextStats: AllStats = { ...stats }
   if (Object.keys(nextByLanguage).length === 0) delete nextStats[presLang]
   else nextStats[presLang] = nextByLanguage
 
-  return { ...store, stats: nextStats }
+  return withStatsOf(store, deck, nextStats)
 }
 
-/** `store` with every attempt dropped, keeping settings. */
+/** `store` with every attempt dropped — from both decks — keeping settings. */
 export function withoutStats(store: Store): Store {
-  return { ...store, stats: {} }
+  return { ...store, stats: {}, phraseStats: {} }
 }
 
 /** `store` with `partial` merged into its settings. */
@@ -270,17 +290,18 @@ export function withSettings(store: Store, partial: Partial<Settings>): Store {
 
 /** Append an attempt and persist. Returns the new store. */
 export function recordAttempt(
+  deck: DeckId,
   presLang: string,
   key: string,
   correct: boolean,
   t: number = Date.now(),
 ): Store {
-  return persist(withAttempt(loadStore(), presLang, key, correct, t))
+  return persist(withAttempt(loadStore(), deck, presLang, key, correct, t))
 }
 
 /** Remove the most recent attempt for a word and persist. */
-export function undoLastAttempt(presLang: string, key: string): Store {
-  return persist(withoutLastAttempt(loadStore(), presLang, key))
+export function undoLastAttempt(deck: DeckId, presLang: string, key: string): Store {
+  return persist(withoutLastAttempt(loadStore(), deck, presLang, key))
 }
 
 /** Drop every attempt, keeping settings. */

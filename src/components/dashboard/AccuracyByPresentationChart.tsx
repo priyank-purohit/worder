@@ -13,7 +13,14 @@ import EmptyState from './EmptyState'
  * its own chart (`WordsPerPresentationChart`); mixing the two on one pair of
  * axes made neither readable.
  */
-export default function AccuracyByPresentationChart({ data }: { data: PresentationAccuracy[] }) {
+export default function AccuracyByPresentationChart({
+  data,
+  subject = 'words',
+}: {
+  data: PresentationAccuracy[]
+  /** What the empty state tells the user to practise: `words` or `phrases`. */
+  subject?: string
+}) {
   const theme = useTheme()
 
   const options = useMemo<Highcharts.Options>(() => {
@@ -54,7 +61,7 @@ export default function AccuracyByPresentationChart({ data }: { data: Presentati
   }, [data, theme])
 
   if (data.length < 1) {
-    return <EmptyState>No attempts yet — practise a few words to see this chart.</EmptyState>
+    return <EmptyState>No attempts yet — practise a few {subject} to see this chart.</EmptyState>
   }
 
   return (

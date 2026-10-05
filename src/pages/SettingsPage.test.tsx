@@ -145,6 +145,7 @@ describe('SettingsPage', () => {
         themeMode: 'system',
       },
       stats: { Gujarati: { 'એક::a': [{ t: 1, correct: true }, { t: 2, correct: false }] } },
+      phraseStats: {},
     }
     fireEvent.change(input, {
       target: { files: [new File([JSON.stringify(imported)], 'worder-stats.json')] },

@@ -1,7 +1,7 @@
 import { joinOtherTexts, textsOf } from '../../lib/format'
 import { normalizeText } from '../../lib/normalize'
 import { summarize } from '../../lib/stats'
-import type { WordList, WordRow, WordStats } from '../../lib/types'
+import type { DeckId, WordList, WordRow, WordStats } from '../../lib/types'
 import { wordKey } from '../../lib/wordKey'
 
 /** One browsable row, for the current presentation language. */
@@ -49,6 +49,39 @@ export function filterWordOptions(options: WordOption[], input: string): WordOpt
   const needle = normalizeText(input)
   if (needle === '') return options
   return options.filter((option) => option.search.some((text) => text.includes(needle)))
+}
+
+/** The query parameter that switches the Words tab between its two decks. */
+export const SET_PARAM = 'set'
+
+/** The deck a `/words` URL asks for: `?set=phrases`, else the words. */
+export function deckFromParams(params: URLSearchParams): DeckId {
+  return params.get(SET_PARAM) === 'phrases' ? 'phrases' : 'words'
+}
+
+/** The noun for a deck, singular or plural: `word` / `phrases`. */
+export function deckNoun(deck: DeckId, count = 2): string {
+  const singular = deck === 'phrases' ? 'phrase' : 'word'
+  return count === 1 ? singular : `${singular}s`
+}
+
+/**
+ * `/words` for a deck and filter: `/words`, `/words?q=eau`,
+ * `/words?set=phrases&q=merci`. The words deck is the default and is left out
+ * of the URL, so existing links and bookmarks keep working unchanged.
+ */
+export function browsePath(deck: DeckId, q = ''): string {
+  const params = new URLSearchParams()
+  if (deck === 'phrases') params.set(SET_PARAM, 'phrases')
+  if (q !== '') params.set('q', q)
+  const search = params.toString()
+  return search === '' ? '/words' : `/words?${search}`
+}
+
+/** `/words/:key`, carrying the deck the same way {@link browsePath} does. */
+export function detailPath(key: string, deck: DeckId): string {
+  const path = `/words/${encodeURIComponent(key)}`
+  return deck === 'phrases' ? `${path}?${SET_PARAM}=phrases` : path
 }
 
 /**

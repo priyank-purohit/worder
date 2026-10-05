@@ -40,7 +40,7 @@ function reveal() {
 /** Put a history on `eau` before the page mounts. */
 function seedAttempts(results: boolean[]) {
   results.forEach((correct, i) => {
-    recordAttempt('French', KEY, correct, 1_700_000_000_000 + i * 1_000)
+    recordAttempt('words', 'French', KEY, correct, 1_700_000_000_000 + i * 1_000)
   })
 }
 

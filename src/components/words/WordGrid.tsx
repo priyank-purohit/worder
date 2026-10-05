@@ -1,4 +1,5 @@
 import { Box } from '@mui/material'
+import type { DeckId } from '../../lib/types'
 import { CORRECT_COLOR, INCORRECT_COLOR } from '../../theme'
 import WordTile from './WordTile'
 import type { WordOption } from './options'
@@ -6,6 +7,7 @@ import type { WordOption } from './options'
 export interface WordGridProps {
   /** Words to show, in file order (= frequency rank). */
   options: WordOption[]
+  deck: DeckId
   presLang: string
   /** wordKey -> accuracy 0–100, for the words that have been practised. */
   accuracy: Map<string, number>
@@ -22,7 +24,14 @@ export interface WordGridProps {
  * styling is declared here once and the tiles only carry class names;
  * `content-visibility` lets the browser skip laying out what is offscreen.
  */
-export default function WordGrid({ options, presLang, accuracy, q, onNavigate }: WordGridProps) {
+export default function WordGrid({
+  options,
+  deck,
+  presLang,
+  accuracy,
+  q,
+  onNavigate,
+}: WordGridProps) {
   return (
     <Box
       sx={(theme) => ({
@@ -90,6 +99,7 @@ export default function WordGrid({ options, presLang, accuracy, q, onNavigate }:
         <WordTile
           key={`${option.key}#${option.row.index}`}
           option={option}
+          deck={deck}
           presLang={presLang}
           pct={accuracy.get(option.key) ?? null}
           q={q}

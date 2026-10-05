@@ -1,3 +1,4 @@
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import InsightsIcon from '@mui/icons-material/Insights'
 import SearchIcon from '@mui/icons-material/Search'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -27,6 +28,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Practice', path: '/', Icon: StyleIcon },
+  { label: 'Phrases', path: '/phrases', Icon: ChatBubbleOutlineIcon },
   { label: 'Words', path: '/words', Icon: SearchIcon },
   { label: 'Dashboard', path: '/dashboard', Icon: InsightsIcon },
   { label: 'Settings', path: '/settings', Icon: SettingsIcon },
@@ -49,12 +51,13 @@ export default function Layout() {
   const navigate = useNavigate()
   const current = activePath(pathname)
   /**
-   * Practice is a fixed one-viewport route: it must never scroll, because a
-   * vertical pan would steal the card's swipe half way through the gesture.
-   * `.viewport-shell` (in `index.css`) pins the shell to `100dvh`, with a
-   * `100vh` fallback, and clips anything that would stick out.
+   * Practice — and the practice view of Phrases — is a fixed one-viewport
+   * route: it must never scroll, because a vertical pan would steal the card's
+   * swipe half way through the gesture. `.viewport-shell` (in `index.css`)
+   * pins the shell to `100dvh`, with a `100vh` fallback, and clips anything
+   * that would stick out. `/phrases/stats` is an ordinary scrolling page.
    */
-  const fixedViewport = current === '/'
+  const fixedViewport = current === '/' || pathname === '/phrases'
   /**
    * `md` (900 px) is right for a column of prose, charts and forms, but it caps
    * the word grid at five columns on a desktop; the browsable list gets the

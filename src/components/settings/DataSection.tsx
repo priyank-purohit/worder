@@ -6,7 +6,7 @@ import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useStore } from '../../hooks/useStore'
 import { STORAGE_KEY } from '../../lib/storage'
-import type { AllStats } from '../../lib/types'
+import type { Store } from '../../lib/types'
 import ConfirmDialog from './ConfirmDialog'
 import SettingsSection from './SettingsSection'
 
@@ -16,12 +16,12 @@ interface Toast {
   message: string
 }
 
-function countAttempts(stats: AllStats): number {
-  return Object.values(stats).reduce(
-    (total, byKey) =>
-      total + Object.values(byKey).reduce((sum, attempts) => sum + attempts.length, 0),
-    0,
-  )
+/** Every attempt on this device, words and phrases together. */
+function countAttempts(store: Store): number {
+  return [store.stats, store.phraseStats]
+    .flatMap((stats) => Object.values(stats))
+    .flatMap((byKey) => Object.values(byKey))
+    .reduce((total, attempts) => total + attempts.length, 0)
 }
 
 /** Local date as `YYYY-MM-DD`, for the export file name. */
@@ -36,7 +36,7 @@ export default function DataSection() {
   const [pending, setPending] = useState<Pending>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const totalAttempts = countAttempts(store.stats)
+  const totalAttempts = countAttempts(store)
 
   function handleExport() {
     const url = URL.createObjectURL(new Blob([exportJson()], { type: 'application/json' }))
@@ -90,7 +90,7 @@ export default function DataSection() {
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
           {totalAttempts.toLocaleString()} attempt{totalAttempts === 1 ? '' : 's'} recorded across
-          all languages · stored under{' '}
+          all languages, words and phrases · stored under{' '}
           <Box component="code" sx={{ fontFamily: 'monospace' }}>
             {STORAGE_KEY}
           </Box>

@@ -1,30 +1,41 @@
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { Alert, Box, Button, IconButton, Paper, Stack, Typography } from '@mui/material'
 import { useEffect, useMemo } from 'react'
-import { Link as RouterLink, useLocation, useParams } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import AttemptList from '../components/words/AttemptList'
 import WordBrowser from '../components/words/WordBrowser'
 import WordDetail from '../components/words/WordDetail'
 import WordHistoryChart from '../components/words/WordHistoryChart'
 import { listPath, scrollWindowTo } from '../components/words/listMemory'
-import { buildWordOptions, decodeKeyParam, findWordOption } from '../components/words/options'
+import {
+  buildWordOptions,
+  deckFromParams,
+  deckNoun,
+  decodeKeyParam,
+  findWordOption,
+} from '../components/words/options'
 import { useStore } from '../hooks/useStore'
-import { useWordList } from '../hooks/useWordList'
+import { listOf, useWordList } from '../hooks/useWordList'
+import { statsOf } from '../lib/storage'
 
 /**
- * `/words` browses the whole word list; `/words/:key` is one word's history.
- * Both hang off the presentation language, so switching it in Settings rebuilds
- * the list and the stats shown here.
+ * `/words` browses the whole word list — or, with `?set=phrases`, the phrase
+ * list; `/words/:key` is one entry's history, in whichever deck the same
+ * parameter names. Both hang off the presentation language, so switching it in
+ * Settings rebuilds the list and the stats shown here.
  */
 export default function WordsPage() {
-  const { wordList } = useWordList()
+  const lists = useWordList()
   const { store } = useStore()
   const params = useParams<{ key?: string }>()
+  const [search] = useSearchParams()
   const { state } = useLocation()
 
+  const deck = deckFromParams(search)
+  const list = listOf(lists, deck)
   const presLang = store.settings.presentationLanguage
-  const options = useMemo(() => buildWordOptions(wordList, presLang), [wordList, presLang])
-  const wordStats = useMemo(() => store.stats[presLang] ?? {}, [store.stats, presLang])
+  const options = useMemo(() => buildWordOptions(list, presLang), [list, presLang])
+  const wordStats = useMemo(() => statsOf(store, deck)[presLang] ?? {}, [store, deck, presLang])
 
   const selectedKey = params.key === undefined ? null : decodeKeyParam(params.key)
   const selected = useMemo(() => findWordOption(options, selectedKey), [options, selectedKey])
@@ -35,11 +46,21 @@ export default function WordsPage() {
   }, [selectedKey])
 
   if (selectedKey === null) {
-    return <WordBrowser options={options} wordStats={wordStats} presLang={presLang} />
+    return (
+      <WordBrowser
+        options={options}
+        wordStats={wordStats}
+        deck={deck}
+        presLang={presLang}
+        deckError={deck === 'phrases' ? lists.phraseError : null}
+      />
+    )
   }
 
-  // The filter the list had when this word was tapped, so back returns to it.
-  const back = listPath(state)
+  // The filter the list had when this entry was tapped, so back returns to it.
+  const back = listPath(state, deck)
+  const noun = deckNoun(deck, 1)
+  const nouns = deckNoun(deck)
 
   if (selected === null) {
     return (
@@ -47,12 +68,12 @@ export default function WordsPage() {
         severity="warning"
         action={
           <Button component={RouterLink} to={back} color="inherit" size="small">
-            All words
+            All {nouns}
           </Button>
         }
       >
-        No {presLang} word matches “{selectedKey}”. It may have been renamed or removed from the
-        word file, or belong to another presentation language.
+        No {presLang} {noun} matches “{selectedKey}”. It may have been renamed or removed from the{' '}
+        {noun} file, or belong to another presentation language.
       </Alert>
     )
   }
@@ -62,7 +83,12 @@ export default function WordsPage() {
   return (
     <Box>
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1.5 }}>
-        <IconButton component={RouterLink} to={back} aria-label="Back to words" sx={{ ml: -1 }}>
+        <IconButton
+          component={RouterLink}
+          to={back}
+          aria-label={`Back to ${nouns}`}
+          sx={{ ml: -1 }}
+        >
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h6" component="h2" noWrap sx={{ minWidth: 0 }}>
@@ -73,7 +99,7 @@ export default function WordsPage() {
       <Stack spacing={2}>
         <WordDetail
           option={selected}
-          languages={wordList.languages}
+          languages={list.languages}
           presLang={presLang}
           attempts={attempts}
         />

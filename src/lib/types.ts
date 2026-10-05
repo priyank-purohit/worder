@@ -39,8 +39,21 @@ export type WordStats = Record<string, Attempt[]>
 /** presentationLanguage -> wordKey -> attempts. */
 export type AllStats = Record<string, WordStats>
 
+/**
+ * Which set of cards an attempt belongs to. The word list and the phrase list
+ * are separate files and keep separate stats, so a phrase never counts as a
+ * word (or the other way round) in any chart.
+ */
+export type DeckId = 'words' | 'phrases'
+
 export interface Store {
   version: 1
   settings: Settings
+  /** Attempts on `public/words.csv`. */
   stats: AllStats
+  /**
+   * Attempts on `public/phrases.csv`. Added after v1 shipped; a store or an
+   * export written before then simply has none, which reads as `{}`.
+   */
+  phraseStats: AllStats
 }

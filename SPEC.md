@@ -37,6 +37,16 @@ across different French rows are allowed — the row identity is the French lemm
 
 Swapping to another language = replacing this file. Nothing else changes.
 
+### Phrase file
+
+`public/phrases.csv`: the same shape, parsed by the same code. The shipped file
+holds **200 tourist phrases** (greetings, communication, directions and
+transport, accommodation, restaurant, shopping and money, emergencies and health,
+time, numbers and sightseeing), most useful first, with EN/FR/GU/HI columns. It is
+**optional**: when it is missing or unusable `WordListProvider` leaves
+`phraseList` empty and sets `phraseError`, the Phrases tab shows that message and
+nothing else in the app changes. Both files are fetched in parallel on start.
+
 ## Core types (`src/lib/types.ts`)
 
 ```ts
@@ -53,13 +63,20 @@ export interface Settings {
   topShare: number;                 // default 0.7  (probability a draw comes from the top-N pool)
   themeMode: ThemeMode;             // default 'system'; added after v1, missing/unknown reads as 'system'
 }
+/** Which set of cards an attempt belongs to. Each deck keeps its own stats. */
+export type DeckId = 'words' | 'phrases';
 export interface Store {
   version: 1;
   settings: Settings;
   // presentationLanguage -> wordKey -> attempts (chronological)
   stats: Record<string, Record<string, Attempt[]>>;
+  // The same, for public/phrases.csv. Absent in older stores/exports = {}.
+  phraseStats: Record<string, Record<string, Attempt[]>>;
 }
 ```
+
+`statsOf(store, deck)` picks the bucket; nothing reads `store.stats` directly for
+a deck it was not given.
 
 ### Word key (`src/lib/wordKey.ts`)
 
@@ -72,10 +89,12 @@ duplicates (e.g. French "à" appears for both "to" and "at"). Rows lacking a val
 ## Storage (`src/lib/storage.ts`)
 
 - Single `localStorage` key `worder:v1`, JSON of `Store`.
-- `loadStore()`, `saveStore()`, `recordAttempt(presLang, key, correct, t = Date.now())`,
-  `undoLastAttempt(presLang, key)` (removes the most recent attempt), `resetStats()`,
-  `exportJson(): string`, `importJson(json: string)` (validates shape; merges by
-  replacing whole store), `updateSettings(partial)`.
+- `loadStore()`, `saveStore()`, `recordAttempt(deck, presLang, key, correct, t = Date.now())`,
+  `undoLastAttempt(deck, presLang, key)` (removes the most recent attempt),
+  `resetStats()` (both decks), `exportJson(): string`, `importJson(json: string)`
+  (validates shape; merges by replacing whole store), `updateSettings(partial)`.
+- `parseStore` accepts a missing `phraseStats` (older data) as `{}`, keeps a
+  well-formed one, and rejects a malformed one like it rejects malformed `stats`.
 - Wrap all reads/writes in try/catch; app must work if storage is unavailable
   (in-memory fallback).
 - Expose via a React context/hook `useStore()` so all pages re-render on change.
@@ -109,7 +128,7 @@ settings a draw depends on, so a caller does not have to hold a whole `Settings`
 ## Pages (HashRouter)
 
 Navigation: MUI `BottomNavigation` on small screens (`sm` down), `AppBar` with tabs
-on larger. The palette comes from `settings.themeMode`: `light` and `dark` are
+on larger. Five items, in order: Practice, Phrases, Words, Dashboard, Settings. The palette comes from `settings.themeMode`: `light` and `dark` are
 explicit, `system` follows `useMediaQuery('(prefers-color-scheme: dark)')`. `App`
 reads the mode inside the store provider (`ThemedApp`) and keeps the
 `<meta name="theme-color">` in step with `palette.background.default`.
@@ -176,7 +195,42 @@ Everything must be usable on phone, tablet and desktop.
 - Helper line under the buttons: `Tap to reveal, then swipe right if you knew it, left
   if not`, with ` · arrow keys work too` appended from `sm` up.
 
+### `/phrases` and `/phrases/stats` Phrases (`src/pages/PhrasesPage.tsx`)
+
+One tab, two views, chosen by a `ToggleButtonGroup` (`aria-label="Phrases view"`,
+**Practice** / **Stats**) in a header row beside an `h2` "Phrases"; the view is
+the route, so either can be linked to.
+
+- **Practice** (`/phrases`) is the same `PracticeDeck` as `/` with
+  `deck="phrases"`, dealt from `phraseList`. Every phrase is a common one, so the
+  draw is uniform over the whole list: `topN = Number.MAX_SAFE_INTEGER`,
+  `topShare = 1` (the whole list is the top pool). The fitted font is capped at
+  **36 px** (`maxFontPx`) because a phrase wraps onto several lines. The route is
+  a fixed one-viewport, non-scrolling route exactly like `/` (`Layout` gives it the
+  `.viewport-shell`; `useNoDocumentScroll` pins the body while the card is shown),
+  with the header row `flex-shrink: 0` and the deck taking the rest.
+- **Stats** (`/phrases/stats`) scrolls normally. `PhraseStats`: `StatTiles`
+  (`phrases-seen` as `seen / eligible`, `phrase-attempts`, `phrase-overall-correct`,
+  `phrase-presentation-language`), attempts per day, accuracy by presentation
+  number, a "Hardest phrases" table whose rows link to
+  `/words/:key?set=phrases`, and a "Browse all phrases" button to
+  `/words?set=phrases`. All of it reads `store.phraseStats[presLang]` only.
+- Answers go to `phraseStats` through `recordAttempt('phrases', …)`; the word
+  stats are never touched. The Dashboard tab stays words-only.
+- No phrase has the presentation language → the same kind of info `Alert` as `/`.
+  `phraseError` set → a warning `Alert` with the message; nothing is pinned.
+
 ### `/words` and `/words/:key` Word stats (`src/pages/WordsPage.tsx`)
+
+Both routes take **`?set=phrases`** to show the phrase deck instead
+(`deckFromParams`; anything else is the words deck, which is left out of URLs so
+old links keep working). The list gets a **Words | Phrases** `ToggleButtonGroup`
+(`aria-label="Deck"`, `DeckToggle`) in the heading row, and the `h2` reads
+"Words" or "Phrases" to match. Switching keeps `?q=`. Tiles, the hardest-words
+rows and the back link carry the deck (`detailPath`, `browsePath`,
+`listPath(state, deck)`), the count line uses the right noun (`1 phrase · 0
+seen`), the back button is `aria-label="Back to phrases"`, and the stats shown
+are `statsOf(store, deck)[presLang]`.
 
 - `/words` is a **browsable grid of every practisable word** for the current
   presentation language, in file order (= frequency rank) — not a search box. An `h2`
@@ -249,9 +303,12 @@ Everything must be usable on phone, tablet and desktop.
   `settings.themeMode`, with the helper text "System follows your device setting."
 - Presentation language `Select` (from header languages).
 - `topN` number field, `topShare` slider (0–1, step 0.05, shown as %).
-- Word file info: detected languages, row count.
+- Word file info: detected languages, row count; a line for the phrase file
+  (`data-testid="phrase-file-summary"`) or a warning with `phraseError`
+  (`data-testid="phrase-file-error"`).
 - Export stats (downloads `worder-stats-<date>.json`), Import stats (file picker,
-  confirm dialog), Reset all stats (confirm dialog).
+  confirm dialog), Reset all stats (confirm dialog). The attempt count and the
+  reset cover both decks.
 
 ## Deploy
 

@@ -13,10 +13,12 @@ import {
   recordAttempt,
   resetStats,
   saveStore,
+  statsOf,
   undoLastAttempt,
   updateSettings,
   withAttempt,
   withoutLastAttempt,
+  withoutStats,
 } from './storage'
 import type { Settings, Store } from './types'
 
@@ -62,6 +64,7 @@ describe('loadStore', () => {
       version: 1,
       settings: defaultSettings(LANGS),
       stats: {},
+      phraseStats: {},
     })
   })
 
@@ -76,8 +79,8 @@ describe('loadStore', () => {
 describe('attempts', () => {
   it('records attempts under the language and key, chronologically', () => {
     saveStore(loadStore(LANGS))
-    recordAttempt('French', 'à::to', false, 200)
-    const store = recordAttempt('French', 'à::to', true, 100)
+    recordAttempt('words', 'French', 'à::to', false, 200)
+    const store = recordAttempt('words', 'French', 'à::to', true, 100)
     expect(store.stats.French['à::to']).toEqual([
       { t: 100, correct: true },
       { t: 200, correct: false },
@@ -86,18 +89,18 @@ describe('attempts', () => {
   })
 
   it('undo removes the most recent attempt and prunes empty entries', () => {
-    recordAttempt('French', 'à::to', true, 100)
-    recordAttempt('French', 'à::to', false, 200)
-    expect(undoLastAttempt('French', 'à::to').stats.French['à::to']).toEqual([
+    recordAttempt('words', 'French', 'à::to', true, 100)
+    recordAttempt('words', 'French', 'à::to', false, 200)
+    expect(undoLastAttempt('words', 'French', 'à::to').stats.French['à::to']).toEqual([
       { t: 100, correct: true },
     ])
-    expect(undoLastAttempt('French', 'à::to').stats.French).toBeUndefined()
-    expect(undoLastAttempt('French', 'à::to').stats).toEqual({})
+    expect(undoLastAttempt('words', 'French', 'à::to').stats.French).toBeUndefined()
+    expect(undoLastAttempt('words', 'French', 'à::to').stats).toEqual({})
   })
 
   it('resetStats keeps settings', () => {
     updateSettings({ topN: 42 })
-    recordAttempt('French', 'à::to', true, 100)
+    recordAttempt('words', 'French', 'à::to', true, 100)
     const store = resetStats()
     expect(store.stats).toEqual({})
     expect(store.settings.topN).toBe(42)
@@ -116,7 +119,7 @@ describe('updateSettings', () => {
 describe('export / import', () => {
   it('round-trips through JSON', () => {
     updateSettings(defaultSettings(LANGS))
-    recordAttempt('French', 'à::to', true, 100)
+    recordAttempt('words', 'French', 'à::to', true, 100)
     const json = exportJson()
     resetStats()
     expect(importJson(json).stats.French['à::to']).toEqual([{ t: 100, correct: true }])
@@ -167,6 +170,7 @@ describe('reconcile', () => {
         themeMode: 'light',
       },
       stats: { Klingon: { 'a::b': [{ t: 1, correct: true }] } },
+      phraseStats: {},
     }
     const repaired = reconcileStore(store, LANGS)
     expect(repaired.settings).toEqual({
@@ -182,8 +186,8 @@ describe('reconcile', () => {
 describe('pure transforms', () => {
   it('append and undo without touching storage', () => {
     const base = defaultStore(LANGS)
-    const one = withAttempt(base, 'French', 'à::to', true, 100)
-    const two = withAttempt(one, 'French', 'à::to', false, 200)
+    const one = withAttempt(base, 'words', 'French', 'à::to', true, 100)
+    const two = withAttempt(one, 'words', 'French', 'à::to', false, 200)
 
     expect(two.stats.French['à::to']).toEqual([
       { t: 100, correct: true },
@@ -194,16 +198,16 @@ describe('pure transforms', () => {
     expect(one.stats.French['à::to']).toHaveLength(1)
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
 
-    expect(withoutLastAttempt(two, 'French', 'à::to').stats.French['à::to']).toEqual([
+    expect(withoutLastAttempt(two, 'words', 'French', 'à::to').stats.French['à::to']).toEqual([
       { t: 100, correct: true },
     ])
-    expect(withoutLastAttempt(base, 'French', 'à::to')).toBe(base)
+    expect(withoutLastAttempt(base, 'words', 'French', 'à::to')).toBe(base)
   })
 })
 
 describe('parseStore / parseImport', () => {
   it('accepts a valid store and rejects anything else', () => {
-    const store = withAttempt(defaultStore(LANGS), 'French', 'à::to', true, 100)
+    const store = withAttempt(defaultStore(LANGS), 'words', 'French', 'à::to', true, 100)
     expect(parseStore(JSON.parse(JSON.stringify(store)) as unknown)).toEqual(store)
     expect(parseStore({ version: 1 })).toBeNull()
     // parseImport validates but stores nothing.
@@ -246,5 +250,55 @@ describe('themeMode backward compatibility', () => {
     expect(updateSettings({ themeMode: 'dark' }).settings.themeMode).toBe('dark')
     expect(loadStore(LANGS).settings.themeMode).toBe('dark')
     expect(localStorage.getItem(STORAGE_KEY)).toContain('"themeMode":"dark"')
+  })
+})
+
+describe('phrase deck', () => {
+  it('keeps phrase attempts apart from word attempts', () => {
+    const one = withAttempt(defaultStore(LANGS), 'phrases', 'French', 'Bonjour::Hello', true, 100)
+    expect(one.phraseStats.French['Bonjour::Hello']).toEqual([{ t: 100, correct: true }])
+    expect(one.stats).toEqual({})
+    expect(statsOf(one, 'phrases')).toBe(one.phraseStats)
+    expect(statsOf(one, 'words')).toBe(one.stats)
+
+    // Undoing a phrase leaves the word bucket alone, and the other way round.
+    const both = withAttempt(one, 'words', 'French', 'à::to', false, 200)
+    const undone = withoutLastAttempt(both, 'phrases', 'French', 'Bonjour::Hello')
+    expect(undone.phraseStats).toEqual({})
+    expect(undone.stats.French['à::to']).toHaveLength(1)
+    expect(withoutLastAttempt(both, 'phrases', 'French', 'à::to')).toBe(both)
+  })
+
+  it('persists phrase attempts through the wrappers and clears both decks on reset', () => {
+    recordAttempt('phrases', 'French', 'Merci::Thanks', false, 5)
+    recordAttempt('words', 'French', 'à::to', true, 6)
+    expect(loadStore(LANGS).phraseStats.French['Merci::Thanks']).toHaveLength(1)
+    expect(undoLastAttempt('phrases', 'French', 'Merci::Thanks').phraseStats).toEqual({})
+    expect(loadStore(LANGS).stats.French['à::to']).toHaveLength(1)
+
+    recordAttempt('phrases', 'French', 'Merci::Thanks', true, 7)
+    const cleared = resetStats()
+    expect(cleared.stats).toEqual({})
+    expect(cleared.phraseStats).toEqual({})
+    expect(withoutStats(loadStore(LANGS)).phraseStats).toEqual({})
+  })
+
+  it('reads a store or export written before the phrase deck existed', () => {
+    // No `phraseStats` key at all: nothing has been lost, so nothing is rejected.
+    localStorage.setItem(STORAGE_KEY, legacyJson())
+    expect(loadStore(LANGS).phraseStats).toEqual({})
+    expect(parseImport(legacyJson()).phraseStats).toEqual({})
+
+    // Present and well-formed: kept. Present and malformed: the file is rejected.
+    const withPhrases = { ...JSON.parse(legacyJson()), phraseStats: { French: { 'a::b': [{ t: 1, correct: false }] } } }
+    expect(parseStore(withPhrases)?.phraseStats.French['a::b']).toEqual([{ t: 1, correct: false }])
+    expect(parseStore({ ...withPhrases, phraseStats: { French: 1 } })).toBeNull()
+  })
+
+  it('round-trips phrase stats through export and import', () => {
+    recordAttempt('phrases', 'French', 'Merci::Thanks', true, 7)
+    const json = exportJson()
+    localStorage.clear()
+    expect(importJson(json).phraseStats.French['Merci::Thanks']).toEqual([{ t: 7, correct: true }])
   })
 })

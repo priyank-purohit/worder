@@ -29,6 +29,7 @@ const seeded: Store = {
       ],
     },
   },
+  phraseStats: {},
 }
 
 /** Shows the route the app is on, so navigation can be asserted. */
@@ -140,6 +141,46 @@ describe('/words list', () => {
     fireEvent.click(screen.getByLabelText('Clear filter'))
     await waitFor(() => expect(at()).toBe('/words'))
     expect(filter()).toHaveValue('')
+  })
+})
+
+describe('/words?set=phrases', () => {
+  it('toggles to the phrase deck, keeping the filter, and links tiles with the deck', async () => {
+    await renderWords('/words?q=eau')
+    await waitFor(() => expect(tiles()).toHaveLength(1))
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Words')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Phrases' }))
+
+    await waitFor(() => expect(at()).toBe('/words?q=eau&set=phrases'))
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Phrases')
+    // The test stub serves the same CSV for both files, so the same row shows,
+    // but under the phrase deck it has no history and links with `?set=`.
+    await waitFor(() => expect(tiles()).toHaveLength(1))
+    expect(tiles()[0]).toHaveAttribute('href', `/words/${encodeURIComponent(KEY)}?set=phrases`)
+    expect(screen.getByText('1 phrase · 0 seen')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Words' }))
+    await waitFor(() => expect(at()).toBe('/words?q=eau'))
+    expect(screen.getByText('1 word · 1 seen · 67% correct')).toBeInTheDocument()
+  })
+
+  it('shows phrase stats on the detail page and comes back to the phrase list', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...seeded,
+        phraseStats: { French: { [KEY]: [{ t: Date.parse('2026-02-01T10:00:00Z'), correct: true }] } },
+      }),
+    )
+    await renderWords(`/words/${encodeURIComponent(KEY)}?set=phrases`)
+
+    expect(screen.getByText('seen 1×')).toBeInTheDocument()
+    expect(screen.getByText('100% correct')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: 'Back to phrases' }))
+    expect(at()).toBe('/words?set=phrases')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Phrases')
   })
 })
 
