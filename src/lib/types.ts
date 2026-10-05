@@ -23,8 +23,14 @@ export interface Attempt {
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 export interface Settings {
-  /** Language shown on the front of the card. */
+  /** Language shown on the front of a word card. */
   presentationLanguage: string
+  /**
+   * Language shown on the front of a phrase card — the phrase deck has its own,
+   * so words can be practised French-first and phrases English-first. Added
+   * after v1 shipped; missing reads as the default for the phrase file.
+   */
+  phraseLanguage: string
   /** How many leading rows count as "common" words. */
   topN: number
   /** Probability that a draw comes from the top-N pool (0..1). */

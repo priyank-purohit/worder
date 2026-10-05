@@ -10,6 +10,7 @@ function seq(values: number[]): () => number {
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
   presentationLanguage: 'French',
+  phraseLanguage: 'English',
   topN: 3,
   topShare: 0.7,
   themeMode: 'system',

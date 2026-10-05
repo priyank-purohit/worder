@@ -78,7 +78,8 @@ changes — the language menu, the practice card and every chart are driven by t
 header row. Pick the presentation language in Settings (it defaults to `French`
 if that column exists, otherwise the second column).
 
-Statistics are stored per presentation language, keyed by
+Statistics are stored per presentation language (the phrase deck's language is
+its own setting, `phraseLanguage`), keyed by
 `<presentation text>::<first other translation>`, so swapping the file keeps the
 history of any word whose pair is unchanged, and homographs (French `à` for both
 "to" and "at") stay separate.
@@ -127,7 +128,12 @@ returns to the list with the same filter, scrolled back to where you were.
 ### Phrases
 
 The **Phrases** tab practises `public/phrases.csv` with the same card: tap to
-reveal, swipe right or left, undo, arrow keys. Every phrase is a common one, so
+reveal, swipe right or left, undo, arrow keys. The phrase deck has its **own
+front-of-card language**, separate from the word deck's — by default **English**,
+so you read the English and have to come up with the French, while words still
+show French first. Change it from the language button in the tab's header (or
+the "Phrase language" picker in Settings); each language keeps its own phrase
+stats, so switching direction never mixes histories. Every phrase is a common one, so
 cards are drawn evenly from the whole list rather than through the top-N split,
 and because a phrase wraps onto several lines it is capped at a smaller type
 size than a single word. The toggle at the top of the tab switches between

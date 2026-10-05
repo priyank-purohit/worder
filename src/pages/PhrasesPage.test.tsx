@@ -8,7 +8,8 @@ import PhrasesPage from './PhrasesPage'
 
 const WORDS_CSV = ['English,French,Gujarati', 'water,eau,પાણી'].join('\n')
 const PHRASES_CSV = ['English,French,Gujarati', 'Thank you,Merci,આભાર'].join('\n')
-const KEY = 'Merci::Thank you'
+/** English on the front by default, so the key is English-first. */
+const KEY = 'Thank you::Merci'
 
 /** Serves each file its own CSV, so the page can be seen to pick the right one. */
 function stubFetch(phrases: string | null = PHRASES_CSV) {
@@ -58,14 +59,23 @@ afterEach(() => {
 })
 
 describe('/phrases practice view', () => {
-  it('deals a card from the phrase file, not the word file', async () => {
+  it('deals a card from the phrase file, English side up, not the word file', async () => {
     stubFetch()
     await renderPhrases()
 
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Phrases')
     expect(screen.getByTestId('practice-card')).toBeInTheDocument()
-    expect(screen.getByText('Merci')).toBeInTheDocument()
-    expect(screen.queryByText('eau')).not.toBeInTheDocument()
+    expect(screen.getByTestId('practice-word')).toHaveTextContent('Thank you')
+    expect(screen.queryByText('Merci')).not.toBeInTheDocument()
+    expect(screen.queryByText('water')).not.toBeInTheDocument()
+    expect(loadStore().settings.phraseLanguage).toBe('English')
+    expect(loadStore().settings.presentationLanguage).toBe('French')
+
+    reveal()
+    const panel = screen.getByTestId('reveal-panel')
+    expect(panel).toHaveTextContent('French')
+    expect(panel).toHaveTextContent('Merci')
+    expect(panel).toHaveTextContent('આભાર')
     // A card deck: the document is pinned so a swipe cannot scroll it.
     expect(document.body.style.overflow).toBe('hidden')
   })
@@ -76,15 +86,40 @@ describe('/phrases practice view', () => {
     reveal()
     fireEvent.keyDown(window, { key: 'ArrowRight' })
 
-    await waitFor(() => expect(loadStore().phraseStats.French?.[KEY]).toHaveLength(1))
-    expect(loadStore().phraseStats.French[KEY][0].correct).toBe(true)
+    await waitFor(() => expect(loadStore().phraseStats.English?.[KEY]).toHaveLength(1))
+    expect(loadStore().phraseStats.English[KEY][0].correct).toBe(true)
     expect(loadStore().stats).toEqual({})
   })
 
+  it('flips the front language from the header menu, with its own stats', async () => {
+    recordAttempt('phrases', 'English', KEY, true, 1_000)
+    stubFetch()
+    await renderPhrases()
+    expect(screen.getByTestId('history-dots')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Phrase language: English' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'French' }))
+
+    await waitFor(() => expect(screen.getByTestId('practice-word')).toHaveTextContent('Merci'))
+    expect(loadStore().settings.phraseLanguage).toBe('French')
+    // The word deck's language is untouched, and French-first phrases start
+    // from a clean history of their own.
+    expect(loadStore().settings.presentationLanguage).toBe('French')
+    expect(screen.queryByTestId('history-dots')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Phrase language: French' })).toBeInTheDocument()
+
+    reveal()
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    await waitFor(() =>
+      expect(loadStore().phraseStats.French?.['Merci::Thank you']).toHaveLength(1),
+    )
+    expect(loadStore().phraseStats.English[KEY]).toHaveLength(1)
+  })
+
   it('shows the phrase history dots from the phrase bucket only', async () => {
-    recordAttempt('phrases', 'French', KEY, false, 1_000)
-    recordAttempt('words', 'French', KEY, true, 2_000)
-    recordAttempt('words', 'French', KEY, true, 3_000)
+    recordAttempt('phrases', 'English', KEY, false, 1_000)
+    recordAttempt('words', 'English', KEY, true, 2_000)
+    recordAttempt('words', 'English', KEY, true, 3_000)
     stubFetch()
     await renderPhrases()
 
@@ -106,7 +141,7 @@ describe('/phrases practice view', () => {
 
 describe('/phrases/stats view', () => {
   it('switches views through the toggle and the URL', async () => {
-    recordAttempt('phrases', 'French', KEY, true, Date.parse('2026-03-01T09:00:00Z'))
+    recordAttempt('phrases', 'English', KEY, true, Date.parse('2026-03-01T09:00:00Z'))
     stubFetch()
     await renderPhrases()
 
@@ -117,6 +152,7 @@ describe('/phrases/stats view', () => {
     expect(screen.getByTestId('tile-phrases-seen')).toHaveTextContent('1 / 1')
     expect(screen.getByTestId('tile-phrase-attempts')).toHaveTextContent('1')
     expect(screen.getByTestId('tile-phrase-overall-correct')).toHaveTextContent('100%')
+    expect(screen.getByTestId('tile-phrase-presentation-language')).toHaveTextContent('English')
     expect(screen.getByText('Hardest phrases')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Browse all phrases' })).toHaveAttribute(
       'href',

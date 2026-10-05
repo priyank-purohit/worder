@@ -140,6 +140,7 @@ describe('SettingsPage', () => {
       version: 1,
       settings: {
         presentationLanguage: 'Gujarati',
+        phraseLanguage: 'English',
         topN: 3,
         topShare: 0.5,
         themeMode: 'system',

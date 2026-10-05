@@ -7,6 +7,11 @@ export const DEFAULT_TOP_SHARE = 0.7
 export const DEFAULT_THEME_MODE: ThemeMode = 'system'
 /** Preferred presentation language when the word file has one. */
 const PREFERRED_LANGUAGE = 'French'
+/**
+ * Preferred front-of-card language for phrases: read the English, produce the
+ * French — the direction a tourist actually needs.
+ */
+const PREFERRED_PHRASE_LANGUAGE = 'English'
 
 /* ------------------------------------------------------------------ */
 /* Raw storage access, with an in-memory fallback                      */
@@ -60,12 +65,24 @@ function writeRaw(value: string | null): void {
 /* Defaults and validation                                             */
 /* ------------------------------------------------------------------ */
 
-export function defaultSettings(languages: string[]): Settings {
-  const presentationLanguage = languages.includes(PREFERRED_LANGUAGE)
-    ? PREFERRED_LANGUAGE
-    : (languages[1] ?? languages[0] ?? '')
+/** `preferred` when the file has it, else the second column, else the first. */
+function defaultLanguage(languages: string[], preferred: string): string {
+  return languages.includes(preferred) ? preferred : (languages[1] ?? languages[0] ?? '')
+}
+
+/** The default front-of-card language for the phrase file's languages. */
+export function defaultPhraseLanguage(phraseLanguages: string[]): string {
+  return defaultLanguage(phraseLanguages, PREFERRED_PHRASE_LANGUAGE)
+}
+
+/**
+ * Defaults for a word file with `languages`, and a phrase file with
+ * `phraseLanguages` (the same header, unless told otherwise).
+ */
+export function defaultSettings(languages: string[], phraseLanguages: string[] = languages): Settings {
   return {
-    presentationLanguage,
+    presentationLanguage: defaultLanguage(languages, PREFERRED_LANGUAGE),
+    phraseLanguage: defaultPhraseLanguage(phraseLanguages),
     topN: DEFAULT_TOP_N,
     topShare: DEFAULT_TOP_SHARE,
     themeMode: DEFAULT_THEME_MODE,
@@ -84,8 +101,13 @@ export function toThemeMode(value: unknown): ThemeMode {
   return isThemeMode(value) ? value : DEFAULT_THEME_MODE
 }
 
-export function defaultStore(languages: string[] = []): Store {
-  return { version: 1, settings: defaultSettings(languages), stats: {}, phraseStats: {} }
+export function defaultStore(languages: string[] = [], phraseLanguages: string[] = languages): Store {
+  return {
+    version: 1,
+    settings: defaultSettings(languages, phraseLanguages),
+    stats: {},
+    phraseStats: {},
+  }
 }
 
 /** Both decks, in the order they are shown. */
@@ -102,31 +124,48 @@ function withStatsOf(store: Store, deck: DeckId, stats: AllStats): Store {
 }
 
 /**
- * Settings that are safe to use with `languages`:
+ * Settings that are safe to use with `languages` (the word file's header) and
+ * `phraseLanguages` (the phrase file's):
  * - `presentationLanguage` is one of `languages`. A stored language the word
  *   file no longer has (or an empty one from a store loaded before the CSV was
  *   known) falls back to the default for the file.
+ * - `phraseLanguage` likewise, against the phrase file — and a store written
+ *   before the phrase deck had its own language gets the phrase default.
  * - `themeMode` is one of the three modes, so a store written before that
  *   setting existed gets `system` rather than `undefined`.
  *
+ * An empty language list means "not known yet" and repairs nothing.
  * Returns the same object when nothing needs repairing.
  */
-export function reconcileSettings(settings: Settings, languages: string[]): Settings {
+export function reconcileSettings(
+  settings: Settings,
+  languages: string[],
+  phraseLanguages: string[] = languages,
+): Settings {
   const themeMode = toThemeMode(settings.themeMode)
   const badLanguage = languages.length > 0 && !languages.includes(settings.presentationLanguage)
-  if (!badLanguage && themeMode === settings.themeMode) return settings
+  const badPhraseLanguage =
+    phraseLanguages.length > 0 && !phraseLanguages.includes(settings.phraseLanguage)
+  if (!badLanguage && !badPhraseLanguage && themeMode === settings.themeMode) return settings
   return {
     ...settings,
     themeMode,
     presentationLanguage: badLanguage
-      ? defaultSettings(languages).presentationLanguage
+      ? defaultLanguage(languages, PREFERRED_LANGUAGE)
       : settings.presentationLanguage,
+    phraseLanguage: badPhraseLanguage
+      ? defaultPhraseLanguage(phraseLanguages)
+      : settings.phraseLanguage,
   }
 }
 
 /** {@link reconcileSettings}, applied to a whole store. Not persisted. */
-export function reconcileStore(store: Store, languages: string[]): Store {
-  const settings = reconcileSettings(store.settings, languages)
+export function reconcileStore(
+  store: Store,
+  languages: string[],
+  phraseLanguages: string[] = languages,
+): Store {
+  const settings = reconcileSettings(store.settings, languages, phraseLanguages)
   return settings === store.settings ? store : { ...store, settings }
 }
 
@@ -171,6 +210,9 @@ function parseSettings(value: unknown): Settings | null {
   if (typeof topShare !== 'number' || !Number.isFinite(topShare)) return null
   return {
     presentationLanguage,
+    // Absent before the phrase deck had its own language; `reconcileSettings`
+    // turns the empty string into the default once the phrase file is known.
+    phraseLanguage: typeof value.phraseLanguage === 'string' ? value.phraseLanguage : '',
     topN: Math.max(1, Math.floor(topN)),
     topShare: Math.min(1, Math.max(0, topShare)),
     // Absent in stores written before the theme picker, and never trusted.

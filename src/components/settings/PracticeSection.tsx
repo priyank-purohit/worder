@@ -44,9 +44,9 @@ function useDraft<T>(value: T): [T, (next: T) => void] {
 
 /** Presentation language, top-N size and the top/rest draw split. */
 export default function PracticeSection() {
-  const { wordList } = useWordList()
+  const { wordList, phraseList } = useWordList()
   const { store, updateSettings } = useStore()
-  const { presentationLanguage, topN, topShare } = store.settings
+  const { presentationLanguage, phraseLanguage, topN, topShare } = store.settings
   const maxTopN = Math.max(1, wordList.rows.length)
 
   // Both fields are edited locally and committed to the store on blur / release.
@@ -99,8 +99,34 @@ export default function PracticeSection() {
             </MenuItem>
           ))}
         </Select>
-        <FormHelperText>Stats are kept separately per presentation language.</FormHelperText>
+        <FormHelperText>
+          Shown on the front of word cards. Stats are kept separately per presentation
+          language.
+        </FormHelperText>
       </FormControl>
+
+      {phraseList.languages.length > 0 && (
+        <FormControl fullWidth>
+          <InputLabel id="settings-phrase-language-label">Phrase language</InputLabel>
+          <Select
+            labelId="settings-phrase-language-label"
+            id="settings-phrase-language"
+            label="Phrase language"
+            value={phraseList.languages.includes(phraseLanguage) ? phraseLanguage : ''}
+            onChange={(event) => updateSettings({ phraseLanguage: event.target.value })}
+          >
+            {phraseList.languages.map((language) => (
+              <MenuItem key={language} value={language}>
+                {language}
+              </MenuItem>
+            ))}
+          </Select>
+          <FormHelperText>
+            Shown on the front of phrase cards — read this, recall the rest. The Phrases tab has
+            the same control.
+          </FormHelperText>
+        </FormControl>
+      )}
 
       <TextField
         fullWidth

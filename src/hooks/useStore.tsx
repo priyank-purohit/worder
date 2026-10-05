@@ -25,13 +25,14 @@ const StoreContext = createContext<StoreApi | null>(null)
  * Must be rendered inside a `WordListProvider`.
  */
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const { wordList } = useWordList()
+  const { wordList, phraseList } = useWordList()
   const languages = wordList.languages
+  const phraseLanguages = phraseList.languages
 
   // Loaded once, with the presentation language repaired when the word file
   // does not have the stored one (or a fresh device stored nothing at all).
   const [store, setStore] = useState<Store>(() =>
-    storage.reconcileStore(storage.loadStore(languages), languages),
+    storage.reconcileStore(storage.loadStore(languages), languages, phraseLanguages),
   )
 
   // On a brand-new device that resolved store exists only in memory. Write it
@@ -80,10 +81,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const importJson = useCallback(
     (json: string) => {
       // `parseImport` throws on a bad file, before anything is stored.
-      const imported = storage.reconcileStore(storage.parseImport(json), languages)
+      const imported = storage.reconcileStore(
+        storage.parseImport(json),
+        languages,
+        phraseLanguages,
+      )
       commit(() => imported)
     },
-    [commit, languages],
+    [commit, languages, phraseLanguages],
   )
 
   const exportJson = useCallback(() => JSON.stringify(store, null, 2), [store])

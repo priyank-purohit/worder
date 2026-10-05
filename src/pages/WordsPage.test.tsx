@@ -19,7 +19,13 @@ const KEY = 'eau::water'
 
 const seeded: Store = {
   version: 1,
-  settings: { presentationLanguage: 'French', topN: 500, topShare: 0.7, themeMode: 'system' },
+  settings: {
+    presentationLanguage: 'French',
+    phraseLanguage: 'English',
+    topN: 500,
+    topShare: 0.7,
+    themeMode: 'system',
+  },
   stats: {
     French: {
       [KEY]: [
@@ -144,6 +150,9 @@ describe('/words list', () => {
   })
 })
 
+/** Under the phrase deck the front language is English, so the key flips. */
+const PHRASE_KEY = 'water::eau'
+
 describe('/words?set=phrases', () => {
   it('toggles to the phrase deck, keeping the filter, and links tiles with the deck', async () => {
     await renderWords('/words?q=eau')
@@ -154,10 +163,13 @@ describe('/words?set=phrases', () => {
 
     await waitFor(() => expect(at()).toBe('/words?q=eau&set=phrases'))
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Phrases')
-    // The test stub serves the same CSV for both files, so the same row shows,
-    // but under the phrase deck it has no history and links with `?set=`.
+    // The test stub serves the same CSV for both files, so the same row shows —
+    // English side up, since phrases have their own front language — with no
+    // history of its own, linking with `?set=`.
     await waitFor(() => expect(tiles()).toHaveLength(1))
-    expect(tiles()[0]).toHaveAttribute('href', `/words/${encodeURIComponent(KEY)}?set=phrases`)
+    expect(tiles()[0]).toHaveAttribute('href', `/words/${encodeURIComponent(PHRASE_KEY)}?set=phrases`)
+    expect(screen.getByText('water')).toBeInTheDocument()
+    expect(screen.getByText('eau / પાણી')).toBeInTheDocument()
     expect(screen.getByText('1 phrase · 0 seen')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Words' }))
@@ -170,11 +182,15 @@ describe('/words?set=phrases', () => {
       STORAGE_KEY,
       JSON.stringify({
         ...seeded,
-        phraseStats: { French: { [KEY]: [{ t: Date.parse('2026-02-01T10:00:00Z'), correct: true }] } },
+        phraseStats: {
+          English: { [PHRASE_KEY]: [{ t: Date.parse('2026-02-01T10:00:00Z'), correct: true }] },
+        },
       }),
     )
-    await renderWords(`/words/${encodeURIComponent(KEY)}?set=phrases`)
+    await renderWords(`/words/${encodeURIComponent(PHRASE_KEY)}?set=phrases`)
 
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('water')
+    expect(screen.getByText('English · rank #1')).toBeInTheDocument()
     expect(screen.getByText('seen 1×')).toBeInTheDocument()
     expect(screen.getByText('100% correct')).toBeInTheDocument()
 

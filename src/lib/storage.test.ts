@@ -49,6 +49,7 @@ describe('defaultSettings', () => {
   it('prefers French, else the second language', () => {
     expect(defaultSettings(LANGS)).toEqual({
       presentationLanguage: 'French',
+      phraseLanguage: 'English',
       topN: 500,
       topShare: 0.7,
       themeMode: 'system',
@@ -143,6 +144,7 @@ describe('reconcile', () => {
   it('falls back to the default when the file no longer has the language', () => {
     const settings: Settings = {
       presentationLanguage: 'Klingon',
+      phraseLanguage: 'English',
       topN: 12,
       topShare: 0.4,
       themeMode: 'dark',
@@ -165,6 +167,7 @@ describe('reconcile', () => {
       version: 1,
       settings: {
         presentationLanguage: 'Klingon',
+        phraseLanguage: 'English',
         topN: 12,
         topShare: 0.4,
         themeMode: 'light',
@@ -175,6 +178,7 @@ describe('reconcile', () => {
     const repaired = reconcileStore(store, LANGS)
     expect(repaired.settings).toEqual({
       presentationLanguage: 'French',
+      phraseLanguage: 'English',
       topN: 12,
       topShare: 0.4,
       themeMode: 'light',
@@ -243,7 +247,7 @@ describe('themeMode backward compatibility', () => {
 
   it('keeps a valid stored mode, and persists a new one', () => {
     expect(parseImport(legacyJson({ themeMode: 'dark' })).settings.themeMode).toBe('dark')
-    const settings = legacySettings({ themeMode: 'light' })
+    const settings = legacySettings({ themeMode: 'light', phraseLanguage: 'English' })
     // Nothing to repair: the same object comes back.
     expect(reconcileSettings(settings, LANGS)).toBe(settings)
 
@@ -300,5 +304,35 @@ describe('phrase deck', () => {
     const json = exportJson()
     localStorage.clear()
     expect(importJson(json).phraseStats.French['Merci::Thanks']).toEqual([{ t: 7, correct: true }])
+  })
+})
+
+describe('phraseLanguage', () => {
+  it('defaults to English for the phrase file, apart from the word language', () => {
+    expect(defaultSettings(LANGS).phraseLanguage).toBe('English')
+    expect(defaultSettings(LANGS, ['Hindi', 'French']).phraseLanguage).toBe('French')
+    expect(defaultSettings(['English', 'Spanish']).presentationLanguage).toBe('Spanish')
+    expect(defaultSettings(['English', 'Spanish']).phraseLanguage).toBe('English')
+  })
+
+  it('reads a store from before the phrase deck had its own language', () => {
+    // No `phraseLanguage` in the JSON: empty until the phrase file is known...
+    expect(parseImport(legacyJson()).settings.phraseLanguage).toBe('')
+    // ...then repaired to the phrase default, leaving the word language alone.
+    const repaired = reconcileSettings(parseImport(legacyJson()).settings, LANGS)
+    expect(repaired.phraseLanguage).toBe('English')
+    expect(repaired.presentationLanguage).toBe('French')
+    // Checked against the phrase file's own header, not the word file's.
+    expect(reconcileSettings(legacySettings(), LANGS, ['Hindi', 'French']).phraseLanguage).toBe('French')
+    // An unknown phrase file (empty header) repairs nothing.
+    expect(reconcileSettings(parseImport(legacyJson()).settings, LANGS, []).phraseLanguage).toBe('')
+  })
+
+  it('keeps a stored phrase language the phrase file has, and persists a change', () => {
+    const settings = legacySettings({ phraseLanguage: 'Hindi' })
+    expect(reconcileSettings(settings, LANGS).phraseLanguage).toBe('Hindi')
+    expect(reconcileSettings(settings, LANGS, ['English', 'French']).phraseLanguage).toBe('English')
+    expect(updateSettings({ phraseLanguage: 'Gujarati' }).settings.phraseLanguage).toBe('Gujarati')
+    expect(loadStore(LANGS).settings.phraseLanguage).toBe('Gujarati')
   })
 })

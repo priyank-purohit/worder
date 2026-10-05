@@ -33,7 +33,9 @@ export default function WordsPage() {
 
   const deck = deckFromParams(search)
   const list = listOf(lists, deck)
-  const presLang = store.settings.presentationLanguage
+  // Each deck has its own front-of-card language, and so its own stats.
+  const presLang =
+    deck === 'phrases' ? store.settings.phraseLanguage : store.settings.presentationLanguage
   const options = useMemo(() => buildWordOptions(list, presLang), [list, presLang])
   const wordStats = useMemo(() => statsOf(store, deck)[presLang] ?? {}, [store, deck, presLang])
 

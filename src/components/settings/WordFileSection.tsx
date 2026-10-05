@@ -8,9 +8,9 @@ import SettingsSection from './SettingsSection'
 export default function WordFileSection() {
   const { wordList, phraseList, phraseError } = useWordList()
   const { store } = useStore()
-  const presLang = store.settings.presentationLanguage
+  const { presentationLanguage: presLang, phraseLanguage } = store.settings
   const eligible = eligibleRows(wordList.rows, presLang).length
-  const eligiblePhrases = eligibleRows(phraseList.rows, presLang).length
+  const eligiblePhrases = eligibleRows(phraseList.rows, phraseLanguage).length
 
   return (
     <SettingsSection title="Word file">
@@ -40,7 +40,7 @@ export default function WordFileSection() {
         {phraseError === null ? (
           <Typography variant="body2" data-testid="phrase-file-summary">
             {phraseList.rows.length.toLocaleString()} phrases in public/phrases.csv,{' '}
-            {eligiblePhrases.toLocaleString()} with a {presLang || 'presentation language'} text
+            {eligiblePhrases.toLocaleString()} with a {phraseLanguage || 'phrase language'} text
           </Typography>
         ) : (
           <Alert severity="warning" data-testid="phrase-file-error">

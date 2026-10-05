@@ -59,6 +59,9 @@ export interface Attempt { t: number; correct: boolean; }   // t = epoch ms
 export type ThemeMode = 'system' | 'light' | 'dark';
 export interface Settings {
   presentationLanguage: string;     // default: "French" if present, else languages[1] ?? languages[0]
+  phraseLanguage: string;           // front of phrase cards; default "English" if the phrase file has it,
+                                    // else its languages[1] ?? languages[0]. Added after v1; missing reads
+                                    // as '' until reconciled against the phrase file's header
   topN: number;                     // default 500
   topShare: number;                 // default 0.7  (probability a draw comes from the top-N pool)
   themeMode: ThemeMode;             // default 'system'; added after v1, missing/unknown reads as 'system'
@@ -76,7 +79,13 @@ export interface Store {
 ```
 
 `statsOf(store, deck)` picks the bucket; nothing reads `store.stats` directly for
-a deck it was not given.
+a deck it was not given. The phrase deck's stats are keyed by `phraseLanguage`
+(e.g. `phraseStats.English['Thank you::Merci']`), so English-first and
+French-first practice have separate histories.
+
+`reconcileSettings(settings, languages, phraseLanguages = languages)` repairs
+`presentationLanguage` against the word file's header and `phraseLanguage`
+against the phrase file's; an empty header list repairs nothing.
 
 ### Word key (`src/lib/wordKey.ts`)
 
@@ -199,7 +208,11 @@ Everything must be usable on phone, tablet and desktop.
 
 One tab, two views, chosen by a `ToggleButtonGroup` (`aria-label="Phrases view"`,
 **Practice** / **Stats**) in a header row beside an `h2` "Phrases"; the view is
-the route, so either can be linked to.
+the route, so either can be linked to. Between them sits the **phrase language**
+button (`aria-label="Phrase language: <lang>"`, a `Menu` of the phrase file's
+languages) writing `settings.phraseLanguage`; the heading is `noWrap` and shrinks
+first on a narrow phone. The card's front language is `settings.phraseLanguage`,
+**not** `presentationLanguage`, in both views and on `/words?set=phrases`.
 
 - **Practice** (`/phrases`) is the same `PracticeDeck` as `/` with
   `deck="phrases"`, dealt from `phraseList`. Every phrase is a common one, so the
@@ -301,7 +314,9 @@ are `statsOf(store, deck)[presLang]`.
 
 - Appearance: a `ToggleButtonGroup` of **System / Light / Dark** writing
   `settings.themeMode`, with the helper text "System follows your device setting."
-- Presentation language `Select` (from header languages).
+- Presentation language `Select` (from the word file's header languages).
+- Phrase language `Select` (from the phrase file's header languages; hidden when
+  the phrase file did not load) — the same setting as the Phrases tab's button.
 - `topN` number field, `topShare` slider (0–1, step 0.05, shown as %).
 - Word file info: detected languages, row count; a line for the phrase file
   (`data-testid="phrase-file-summary"`) or a warning with `phraseError`
