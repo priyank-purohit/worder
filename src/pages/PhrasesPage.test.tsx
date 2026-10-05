@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../hooks/useStore'
 import { WordListProvider } from '../hooks/useWordList'
-import { loadStore, recordAttempt } from '../lib/storage'
+import { STORAGE_KEY, loadStore, recordAttempt } from '../lib/storage'
 import PhrasesPage from './PhrasesPage'
 
 const WORDS_CSV = ['English,French,Gujarati', 'water,eau,પાણી'].join('\n')
@@ -91,22 +91,22 @@ describe('/phrases practice view', () => {
     expect(loadStore().stats).toEqual({})
   })
 
-  it('flips the front language from the header menu, with its own stats', async () => {
+  it('follows the phrase language from Settings, with its own stats', async () => {
     recordAttempt('phrases', 'English', KEY, true, 1_000)
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...loadStore(), settings: { ...loadStore().settings, phraseLanguage: 'French' } }),
+    )
     stubFetch()
     await renderPhrases()
-    expect(screen.getByTestId('history-dots')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Phrase language: English' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'French' }))
-
-    await waitFor(() => expect(screen.getByTestId('practice-word')).toHaveTextContent('Merci'))
-    expect(loadStore().settings.phraseLanguage).toBe('French')
+    expect(screen.getByTestId('practice-word')).toHaveTextContent('Merci')
     // The word deck's language is untouched, and French-first phrases start
     // from a clean history of their own.
     expect(loadStore().settings.presentationLanguage).toBe('French')
     expect(screen.queryByTestId('history-dots')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Phrase language: French' })).toBeInTheDocument()
+    // No language control on the tab itself: that lives in Settings.
+    expect(screen.queryByRole('button', { name: /Phrase language/ })).not.toBeInTheDocument()
 
     reveal()
     fireEvent.keyDown(window, { key: 'ArrowLeft' })

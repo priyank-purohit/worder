@@ -122,8 +122,8 @@ export default function PracticeSection() {
             ))}
           </Select>
           <FormHelperText>
-            Shown on the front of phrase cards — read this, recall the rest. The Phrases tab has
-            the same control.
+            Shown on the front of phrase cards — read this, recall the rest. Stats are kept
+            separately per phrase language.
           </FormHelperText>
         </FormControl>
       )}
